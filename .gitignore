@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data & artifacts (keep local, not in git)
+data/
+*.csv
+*.parquet
+models/
+*.pkl
+*.joblib
+
+# GCP credentials
+*.json
+!configs/.gitkeep
+service-account*.json
+application_default_credentials.json
+
+# IDE & OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Pipeline compile output
+pipeline.json
+*.pipeline.yaml
