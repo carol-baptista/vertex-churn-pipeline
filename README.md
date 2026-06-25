@@ -29,7 +29,8 @@ New GCP accounts get **$300 credit for 90 days**. See [docs/phase-0-setup.md](do
 ### Prerequisites
 
 - Google Cloud account with billing (trial OK)
-- `gcloud` CLI, `bq`, Python 3.10+
+- `gcloud` CLI, `bq`
+- [`uv`](https://docs.astral.sh/uv/) (manages Python 3.10-3.12 + dependencies)
 
 ### Quick start
 
@@ -37,10 +38,12 @@ New GCP accounts get **$300 credit for 90 days**. See [docs/phase-0-setup.md](do
 # 1. Clone and enter repo
 cd vertex-churn-pipeline
 
-# 2. Python env
-python3 -m venv .venv
+# 2. Python env (uv — reproducible from uv.lock)
+uv sync
 source .venv/bin/activate
-pip install -r requirements.txt
+
+# macOS only: xgboost needs the OpenMP runtime
+brew install libomp
 
 # 3. Configure
 cp .env.example .env
@@ -77,10 +80,13 @@ See [docs/phase-1-data.md](docs/phase-1-data.md) for the data loading walkthroug
 vertex-churn-pipeline/
 ├── configs/           # non-secret config
 ├── docs/              # setup & phase guides
+├── notebooks/         # EDA (01_eda.ipynb)
 ├── scripts/           # setup_gcp.sh, load_to_bq.sh
 ├── sql/               # BigQuery exploration queries
-├── src/               # training code (Phase 2)
-├── requirements.txt
+├── src/               # config, data loading, training (Phase 2)
+├── pyproject.toml     # dependencies (source of truth)
+├── uv.lock            # pinned, reproducible env (committed)
+├── requirements.txt   # kept in sync for non-uv users
 └── .env.example
 ```
 

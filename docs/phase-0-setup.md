@@ -58,16 +58,29 @@ gcloud auth application-default login
 
 `application-default login` lets Python libraries (`google-cloud-*`) use your credentials locally.
 
-### Python 3.10+ (recommended)
+### Python env with uv (recommended)
 
-macOS system Python is often 3.9. Prefer a newer version:
+This project uses [`uv`](https://docs.astral.sh/uv/) for fast, reproducible
+environments. The exact dependency versions are pinned in `uv.lock`.
 
 ```bash
-brew install python@3.12
-python3.12 -m venv .venv
+brew install uv
+
+# Creates .venv (Python 3.12) and installs everything from uv.lock
+uv sync
 source .venv/bin/activate
-pip install -r requirements.txt
 ```
+
+macOS only: `xgboost` needs the OpenMP runtime, so also run:
+
+```bash
+brew install libomp
+```
+
+> `pyproject.toml` holds the direct dependencies; `uv.lock` is the fully
+> pinned graph (committed to git). Anyone cloning the repo gets the identical
+> environment with `uv sync`. A `requirements.txt` is also kept for users
+> without uv (`pip install -r requirements.txt`).
 
 ---
 
