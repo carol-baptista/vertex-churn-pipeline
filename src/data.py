@@ -1,7 +1,7 @@
 """Load the churn dataset from BigQuery into a pandas DataFrame.
 
 Authentication uses Application Default Credentials (ADC). You set these up
-in Phase 0 with:
+with:
 
     gcloud auth application-default login
 
