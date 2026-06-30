@@ -27,6 +27,11 @@ dependencies = [
     "ipykernel>=6.29,<7",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0,<9",
+]
+
 [tool.uv]
 # Lockfile (uv.lock) is committed for reproducible installs via `uv sync`.
 
