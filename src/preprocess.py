@@ -6,9 +6,9 @@ The decisions here come straight from the EDA "Takeaways" cell in
 - ``TotalCharges`` is loaded as STRING; coerce to numeric. New customers
   (``tenure == 0``) have not been billed yet, so blanks become 0. Any other blank
   is treated as a data error: the row is dropped and logged.
-- Drop ``customerID`` (pure identifier) and ``gender`` (protected attribute with
-  ~0 correlation). ``gender`` is returned separately for a fairness audit and is
-  never used as a model feature.
+- Drop ``customerID`` and protected attributes (e.g. ``gender``) from model features.
+  Keep ``customerID`` as a join key only; re-attach protected columns from the
+  source table when running fairness audits after scoring.
 - Collapse ``"No internet service"`` / ``"No phone service"`` levels to ``"No"``.
   This is lossless because ``InternetService`` / ``PhoneService`` already carry the
   no-service signal, and it removes columns that are perfectly collinear with them.
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 TARGET = "Churn"
 ID_COL = "customerID"
-PROTECTED_COL = "gender"
+PROTECTED_COLS = ["gender"]  # excluded from X; joined back on ID_COL for fairness audits
 
 # Internet add-ons whose "No internet service" level duplicates InternetService == "No". Information that can be derived from the InternetService column.
 NO_INTERNET_COLS = [
@@ -69,7 +69,7 @@ class Dataset:
 
     X: pd.DataFrame  # feature columns only (numeric + categorical)
     y: pd.Series  # 0/1 churn target
-    gender: pd.Series  # kept aside for fairness slicing, never a feature
+    customer_id: pd.Series  # join key for eval / fairness audits, never a feature
 
 
 def clean(df: pd.DataFrame) -> pd.DataFrame:
@@ -103,25 +103,33 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def demographics_table(cleaned_df: pd.DataFrame) -> pd.DataFrame:
+    """Protected attributes keyed by ``customerID`` for post-scoring fairness joins."""
+    return cleaned_df[[ID_COL, *PROTECTED_COLS]].copy()
+
+
+def dataset_from_cleaned(cleaned_df: pd.DataFrame) -> Dataset:
+    """Build modelling inputs from an already-cleaned customers table."""
+    y = cleaned_df[TARGET].astype(int)
+    X = cleaned_df[NUMERIC_FEATURES + CATEGORICAL_FEATURES]
+    return Dataset(X=X, y=y, customer_id=cleaned_df[ID_COL])
+
+
 def make_dataset(df: pd.DataFrame | None = None) -> Dataset:
-    """Clean the data and split into features, target, and the protected attribute.
+    """Clean the data and split into features, target, and join key.
 
     Args:
         df: raw customers table. If ``None``, it is loaded from BigQuery.
 
     Returns:
-        A :class:`Dataset` with features ``X``, target ``y``, and ``gender``.
+        A :class:`Dataset` with features ``X``, target ``y``, and ``customer_id``.
+        Protected columns are *not* included; use :func:`demographics_table` on the
+        cleaned frame and join on ``customerID`` when auditing fairness.
     """
     if df is None:
         df = data.load_customers()
 
-    df = clean(df)
-
-    y = df[TARGET].astype(int)
-    gender = df[PROTECTED_COL].astype(str)
-    X = df[NUMERIC_FEATURES + CATEGORICAL_FEATURES]
-
-    return Dataset(X=X, y=y, gender=gender)
+    return dataset_from_cleaned(clean(df))
 
 
 def build_preprocessor(drop_first: bool = False) -> ColumnTransformer:
@@ -159,4 +167,4 @@ if __name__ == "__main__":
     ds = make_dataset()
     print(f"rows: {len(ds.X)}  features: {ds.X.shape[1]}")
     print(f"churn rate: {ds.y.mean():.3f}")
-    print(f"gender values: {ds.gender.value_counts().to_dict()}")
+    print(f"sample customer_id: {ds.customer_id.iloc[0]}")

@@ -18,9 +18,11 @@ training code. Produces two trained models and registry-ready artifacts.
      other blank is dropped and logged as a data error.
    - Collapse `"No internet service"` / `"No phone service"` -> `"No"` (lossless).
    - Cast nullable `Int64`/`boolean` columns so sklearn transformers behave.
-2. **Split features / target / protected attribute** (`preprocess.make_dataset`)
-   - Drop `customerID` and `gender` from features. `gender` is returned separately
-     and used only for the fairness audit.
+2. **Split features / target / join key** (`preprocess.make_dataset`)
+   - Drop protected attributes (e.g. `gender`) from features. Keep `customerID` on
+     `Dataset.customer_id` as a join key only (never passed to the model).
+   - Build a demographics table (`customerID` + protected cols) and merge back
+     after scoring for fairness audits (`train.fairness_audit`).
 3. **Encode** (`preprocess.build_preprocessor`)
    - `StandardScaler` on numerics, `OneHotEncoder(handle_unknown="ignore")` on
      categoricals. `drop_first=True` for Logistic Regression, `False` for XGBoost.
@@ -43,8 +45,9 @@ LogReg). Fair comparison = baseline at defaults vs. a lightly tuned candidate.
 - **Reported:** PR-AUC, ROC-AUC, precision, recall, F1, confusion matrix.
 - **Threshold:** tuned to maximise F1 on **out-of-fold training** predictions, then
   applied to the test set (so test metrics aren't tuned on the test set).
-- **Fairness:** test metrics sliced by `gender` to check for disparate impact via
-  proxy features, even though `gender` is not a model input.
+- **Fairness:** after test scoring, join protected attributes back on `customerID`
+  and slice metrics by group (e.g. gender) to check for disparate impact via
+  proxy features. Protected columns are never model inputs.
 
 ## How to run
 

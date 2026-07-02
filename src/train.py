@@ -94,14 +94,48 @@ def evaluate(y_true: np.ndarray, y_proba: np.ndarray, threshold: float) -> dict:
     }
 
 
+def fairness_audit(
+    customer_ids: pd.Series,
+    y_true: pd.Series,
+    y_proba: np.ndarray,
+    demographics: pd.DataFrame,
+    threshold: float,
+    protected_col: str = "gender",
+) -> dict:
+    """Join protected attributes back on ``customerID`` and slice metrics by group.
+
+    Protected columns are excluded from model features during training. After
+    scoring the test set, we merge demographics onto predictions via the join key
+    to check for disparate impact via proxy features.
+    """
+    eval_df = pd.DataFrame(
+        {
+            preprocess.ID_COL: customer_ids.values,
+            "y_true": y_true.values,
+            "y_proba": y_proba,
+        }
+    ).merge(
+        demographics[[preprocess.ID_COL, protected_col]],
+        on=preprocess.ID_COL,
+        how="left",
+    )
+    if eval_df[protected_col].isna().any():
+        missing = int(eval_df[protected_col].isna().sum())
+        raise ValueError(
+            f"Fairness join failed for {missing} row(s) on {preprocess.ID_COL}."
+        )
+    return fairness_by_group(
+        eval_df["y_true"],
+        eval_df["y_proba"].to_numpy(),
+        eval_df[protected_col],
+        threshold,
+    )
+
+
 def fairness_by_group(
     y_true: pd.Series, y_proba: np.ndarray, group: pd.Series, threshold: float
 ) -> dict:
-    """Slice recall/precision/selection-rate by a group column (e.g. gender).
-
-    ``gender`` is excluded from training; this checks whether the model still
-    treats the groups differently via proxy features (disparate impact).
-    """
+    """Slice recall/precision/selection-rate by a group column."""
     y_pred = (y_proba >= threshold).astype(int)
     out = {}
     for value in sorted(group.unique()):
@@ -178,7 +212,8 @@ def train_one(
     y_train: pd.Series,
     X_test: pd.DataFrame,
     y_test: pd.Series,
-    gender_test: pd.Series,
+    customer_id_test: pd.Series,
+    demographics: pd.DataFrame,
     cv: StratifiedKFold,
     param_grid: dict | None = None,
 ) -> tuple[Pipeline, dict]:
@@ -214,8 +249,8 @@ def train_one(
     test_proba = pipe.predict_proba(X_test)[:, 1]
     metrics = evaluate(y_test.to_numpy(), test_proba, threshold)
     metrics["cv_pr_auc"] = cv_score
-    metrics["fairness_by_gender"] = fairness_by_group(
-        y_test, test_proba, gender_test, threshold
+    metrics["fairness_by_gender"] = fairness_audit(
+        customer_id_test, y_test, test_proba, demographics, threshold
     )
 
     logger.info(
@@ -259,16 +294,21 @@ def main(sample: int | None = None, tune: bool = True) -> dict:
     )
 
     logger.info("Loading + cleaning data...")
-    ds = preprocess.make_dataset(
-        df=None if sample is None else _load_sample(sample)
-    )
+    raw = None if sample is None else _load_sample(sample)
+    if raw is None:
+        from . import data
+
+        raw = data.load_customers()
+    cleaned = preprocess.clean(raw)
+    ds = preprocess.dataset_from_cleaned(cleaned)
+    demographics = preprocess.demographics_table(cleaned)
     logger.info("rows=%d  features=%d  churn_rate=%.3f", len(ds.X), ds.X.shape[1], ds.y.mean())
 
-    # Stratified split; carry gender alongside so test slices line up by index.
-    X_train, X_test, y_train, y_test, _, gender_test = train_test_split(
+    # Stratified split; carry customer_id alongside for post-scoring fairness joins.
+    X_train, X_test, y_train, y_test, _, customer_id_test = train_test_split(
         ds.X,
         ds.y,
-        ds.gender,
+        ds.customer_id,
         test_size=TEST_SIZE,
         stratify=ds.y,
         random_state=RANDOM_STATE,
@@ -284,7 +324,15 @@ def main(sample: int | None = None, tune: bool = True) -> dict:
     results: dict[str, dict] = {}
 
     logreg_pipe, logreg_metrics = train_one(
-        "logreg", build_logreg(), X_train, y_train, X_test, y_test, gender_test, cv
+        "logreg",
+        build_logreg(),
+        X_train,
+        y_train,
+        X_test,
+        y_test,
+        customer_id_test,
+        demographics,
+        cv,
     )
     save_artifacts("logreg", logreg_pipe, logreg_metrics)
     results["logreg"] = logreg_metrics
@@ -296,7 +344,8 @@ def main(sample: int | None = None, tune: bool = True) -> dict:
         y_train,
         X_test,
         y_test,
-        gender_test,
+        customer_id_test,
+        demographics,
         cv,
         param_grid=XGB_PARAM_GRID if tune else None,
     )

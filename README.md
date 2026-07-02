@@ -68,9 +68,9 @@ Full walkthrough: **[docs/phase-0-setup.md](docs/phase-0-setup.md)**
 |-------|--------|-------------|
 | 0 | **Done** | GCP project, APIs, bucket, BQ dataset, local env |
 | 1 | **In progress** | Load Telco churn data into BigQuery |
-| 2 | Planned | Train & evaluate locally |
-| 3 | Planned | Register model + deploy to Vertex endpoint |
-| 4 | Planned | Second version + gated pipeline |
+| 2 | **In progress** | EDA, train & evaluate locally |
+| 3 | Planned | Register model + deploy to Vertex endpoint; **post-training eval** joins predictions to source table on `customerID` for fairness / drift slices |
+| 4 | Planned | Second version + gated pipeline; log predictions with `customerID` for ongoing monitoring |
 
 See [docs/phase-1-data.md](docs/phase-1-data.md) for the data loading walkthrough.
 
