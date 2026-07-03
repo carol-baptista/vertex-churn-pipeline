@@ -12,6 +12,8 @@ The decisions here come straight from the EDA "Takeaways" cell in
 - One-hot encode categoricals, **drop** redundant ``*No internet service`` / ``*No phone service``
   dummies (identical to ``InternetService_No`` / ``PhoneService``). Standardize numerics
   for linear models only (Logistic Regression); tree models skip scaling.
+- Optional **engineered** features (default for training): ``avg_monthly_charge``,
+  ``tenure_bucket``, ``addon_count``, ``month_to_month_electronic``.
 """
 
 from __future__ import annotations
@@ -55,6 +57,53 @@ CATEGORICAL_FEATURES = [
     "PaperlessBilling",
     "PaymentMethod",
 ]
+
+ENGINEERED_NUMERIC_FEATURES = [
+    "avg_monthly_charge",
+    "addon_count",
+    "month_to_month_electronic",
+]
+
+ENGINEERED_CATEGORICAL_FEATURES = ["tenure_bucket"]
+
+ADDON_COLUMNS = [
+    "MultipleLines",
+    "OnlineSecurity",
+    "OnlineBackup",
+    "DeviceProtection",
+    "TechSupport",
+    "StreamingTV",
+    "StreamingMovies",
+]
+
+FEATURE_SETS = ("baseline", "engineered")
+
+
+def feature_columns(*, engineered: bool) -> tuple[list[str], list[str]]:
+    """Return numeric and categorical column lists for a feature set."""
+    numeric = list(NUMERIC_FEATURES)
+    categorical = list(CATEGORICAL_FEATURES)
+    if engineered:
+        numeric.extend(ENGINEERED_NUMERIC_FEATURES)
+        categorical.extend(ENGINEERED_CATEGORICAL_FEATURES)
+    return numeric, categorical
+
+
+def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add EDA-driven features on top of the cleaned raw columns."""
+    df = df.copy()
+    df["avg_monthly_charge"] = df["TotalCharges"] / df["tenure"].clip(lower=1)
+    df["tenure_bucket"] = pd.cut(
+        df["tenure"],
+        bins=[-1, 12, 24, 48, np.inf],
+        labels=["0-12", "13-24", "25-48", "49+"],
+    ).astype(str)
+    df["addon_count"] = (df[ADDON_COLUMNS] == "Yes").sum(axis=1).astype(float)
+    df["month_to_month_electronic"] = (
+        (df["Contract"] == "Month-to-month")
+        & (df["PaymentMethod"] == "Electronic check")
+    ).astype(float)
+    return df
 
 
 @dataclass
@@ -112,7 +161,7 @@ class CategoricalEncoder(BaseEstimator, TransformerMixin):
             sparse_output=False,
         )
         self.encoder_.fit(X)
-        all_names = self.encoder_.get_feature_names_out(CATEGORICAL_FEATURES)
+        all_names = self.encoder_.get_feature_names_out()
         self.keep_mask_ = np.array(
             [
                 not any(marker in name for marker in REDUNDANT_DUMMY_MARKERS)
@@ -135,14 +184,18 @@ def demographics_table(cleaned_df: pd.DataFrame) -> pd.DataFrame:
     return cleaned_df[[ID_COL, *PROTECTED_COLS]].copy()
 
 
-def dataset_from_cleaned(cleaned_df: pd.DataFrame) -> Dataset:
+def dataset_from_cleaned(
+    cleaned_df: pd.DataFrame, *, engineered: bool = True
+) -> Dataset:
     """Build modelling inputs from an already-cleaned customers table."""
-    y = cleaned_df[TARGET].astype(int)
-    X = cleaned_df[NUMERIC_FEATURES + CATEGORICAL_FEATURES]
-    return Dataset(X=X, y=y, customer_id=cleaned_df[ID_COL])
+    frame = engineer_features(cleaned_df) if engineered else cleaned_df
+    numeric, categorical = feature_columns(engineered=engineered)
+    y = frame[TARGET].astype(int)
+    X = frame[numeric + categorical]
+    return Dataset(X=X, y=y, customer_id=frame[ID_COL])
 
 
-def make_dataset(df: pd.DataFrame | None = None) -> Dataset:
+def make_dataset(df: pd.DataFrame | None = None, *, engineered: bool = True) -> Dataset:
     """Clean the data and split into features, target, and join key.
 
     Args:
@@ -156,12 +209,14 @@ def make_dataset(df: pd.DataFrame | None = None) -> Dataset:
     if df is None:
         df = data.load_customers()
 
-    return dataset_from_cleaned(clean(df))
+    return dataset_from_cleaned(clean(df), engineered=engineered)
 
 
 def build_preprocessor(
     drop_first: bool = False,
     scale_numeric: bool = True,
+    *,
+    engineered: bool = True,
 ) -> ColumnTransformer:
     """Build the feature-engineering ColumnTransformer.
 
@@ -183,11 +238,12 @@ def build_preprocessor(
     num_transformer: StandardScaler | str = (
         StandardScaler() if scale_numeric else "passthrough"
     )
+    numeric, categorical = feature_columns(engineered=engineered)
     encoder = CategoricalEncoder(drop_first=drop_first)
     return ColumnTransformer(
         transformers=[
-            ("num", num_transformer, NUMERIC_FEATURES),
-            ("cat", encoder, CATEGORICAL_FEATURES),
+            ("num", num_transformer, numeric),
+            ("cat", encoder, categorical),
         ],
         remainder="drop",
     )

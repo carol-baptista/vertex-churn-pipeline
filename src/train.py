@@ -67,12 +67,14 @@ RANDOM_STATE = 42
 N_SPLITS = 5
 TEST_SIZE = 0.20
 MODELS_DIR = config.REPO_ROOT / "models"
+BASELINE_DIR = config.REPO_ROOT / "experiments" / "baseline"
 
 # Project defaults (also used by Makefile `make train`).
 DEFAULT_METRIC = "f1"
 DEFAULT_POS_WEIGHT_MODE = "sqrt"
 DEFAULT_THRESHOLD_STRATEGY = "f1"
 DEFAULT_RECALL_FLOOR = 0.75
+DEFAULT_FEATURE_SET = "engineered"
 
 METRIC_CHOICES = ("pr_auc", "f1", "f2", "mcc")
 THRESHOLD_STRATEGIES = ("f1", "f2", "recall_floor")
@@ -115,6 +117,7 @@ def build_run_config(
     pos_weight: float,
     threshold_strategy: str,
     recall_floor: float,
+    feature_set: str,
 ) -> dict:
     """Snapshot of the knobs used for one training run."""
     return {
@@ -128,11 +131,63 @@ def build_run_config(
         "select_metric": select_metric,
         "select_scoring": select_metric,
         "metrics_aligned": grid_metric == select_metric,
+        "feature_set": feature_set,
+        "engineered_features": feature_set == "engineered",
         "pos_weight_mode": pos_weight_mode,
         "pos_weight_value": round(pos_weight, 4),
         "threshold_strategy": threshold_strategy,
         "recall_floor": recall_floor,
     }
+
+
+def save_baseline_snapshot(summary: dict) -> Path:
+    """Persist the baseline run under ``experiments/baseline/`` for later comparison."""
+    BASELINE_DIR.mkdir(parents=True, exist_ok=True)
+    path = BASELINE_DIR / "summary.json"
+    path.write_text(json.dumps(summary, indent=2))
+    readme = BASELINE_DIR / "README.md"
+    readme.write_text(
+        "# Baseline results (raw features only)\n\n"
+        "Frozen reference run **before** EDA-driven engineered features.\n"
+        "Defaults: `metric=f1`, `pos_weight=sqrt`, `threshold_strategy=f1`.\n\n"
+        "Regenerate with:\n\n"
+        "```bash\n"
+        "make train-baseline\n"
+        "```\n\n"
+        "Compare against the current default (`make train` uses engineered features).\n",
+    )
+    logger.info("Saved baseline snapshot to %s", path)
+    return path
+
+
+def compare_to_baseline(baseline: dict, current_results: dict[str, dict]) -> dict:
+    """Delta table vs the frozen baseline summary."""
+    baseline_models = baseline.get("full_feature_set", baseline).get(
+        "models", baseline.get("models", {})
+    )
+    comparison: dict[str, dict] = {}
+    for name, current in current_results.items():
+        base = baseline_models.get(name, {})
+        comparison[name] = {
+            "delta_test_pr_auc": round(current["pr_auc"] - base.get("test_pr_auc", 0), 4),
+            "delta_test_recall": round(current["recall"] - base.get("test_recall", 0), 4),
+            "delta_test_precision": round(
+                current["precision"] - base.get("test_precision", 0), 4
+            ),
+            "delta_test_f1": round(current["f1"] - base.get("test_f1", 0), 4),
+            "baseline_test_recall": base.get("test_recall"),
+            "baseline_test_precision": base.get("test_precision"),
+            "current_test_recall": current["recall"],
+            "current_test_precision": current["precision"],
+        }
+    return comparison
+
+
+def load_baseline_summary() -> dict | None:
+    path = BASELINE_DIR / "summary.json"
+    if not path.exists():
+        return None
+    return json.loads(path.read_text())
 
 
 def resolve_training_metrics(
@@ -331,7 +386,9 @@ def _random_forest_estimator(
     )
 
 
-def build_logreg(pos_weight: float, *, slim: bool = False) -> Pipeline:
+def build_logreg(
+    pos_weight: float, *, slim: bool = False, engineered: bool = True
+) -> Pipeline:
     """Baseline: Logistic Regression with weighted class loss (untuned)."""
     return Pipeline(
         steps=[
@@ -340,6 +397,7 @@ def build_logreg(pos_weight: float, *, slim: bool = False) -> Pipeline:
                 preprocess.build_preprocessor(
                     drop_first=False if slim else True,
                     scale_numeric=True,
+                    engineered=engineered,
                 ),
             ),
             (
@@ -354,11 +412,16 @@ def build_logreg(pos_weight: float, *, slim: bool = False) -> Pipeline:
     )
 
 
-def build_xgboost(pos_weight: float) -> Pipeline:
+def build_xgboost(pos_weight: float, *, engineered: bool = True) -> Pipeline:
     """Candidate: XGBoost with imbalance handled via scale_pos_weight."""
     return Pipeline(
         steps=[
-            ("prep", preprocess.build_preprocessor(drop_first=False, scale_numeric=False)),
+            (
+                "prep",
+                preprocess.build_preprocessor(
+                    drop_first=False, scale_numeric=False, engineered=engineered
+                ),
+            ),
             (
                 "model",
                 XGBClassifier(
@@ -377,21 +440,31 @@ def build_xgboost(pos_weight: float) -> Pipeline:
     )
 
 
-def build_random_forest(pos_weight: float) -> Pipeline:
+def build_random_forest(pos_weight: float, *, engineered: bool = True) -> Pipeline:
     """Candidate: Random Forest with weighted class loss."""
     return Pipeline(
         steps=[
-            ("prep", preprocess.build_preprocessor(drop_first=False, scale_numeric=False)),
+            (
+                "prep",
+                preprocess.build_preprocessor(
+                    drop_first=False, scale_numeric=False, engineered=engineered
+                ),
+            ),
             ("model", _random_forest_estimator(_class_weight(pos_weight))),
         ]
     )
 
 
-def build_lightgbm(pos_weight: float) -> Pipeline:
+def build_lightgbm(pos_weight: float, *, engineered: bool = True) -> Pipeline:
     """Candidate: LightGBM with imbalance handled via scale_pos_weight."""
     return Pipeline(
         steps=[
-            ("prep", preprocess.build_preprocessor(drop_first=False, scale_numeric=False)),
+            (
+                "prep",
+                preprocess.build_preprocessor(
+                    drop_first=False, scale_numeric=False, engineered=engineered
+                ),
+            ),
             (
                 "model",
                 LGBMClassifier(
@@ -450,6 +523,7 @@ def build_model_specs(
     pos_weight: float,
     *,
     tune: bool,
+    engineered: bool = True,
     selected_features: list[str] | None = None,
     prep_feature_names: list[str] | None = None,
 ) -> list[tuple[str, Pipeline, dict | None]]:
@@ -463,20 +537,20 @@ def build_model_specs(
         else (lambda pipe: pipe)
     )
     return [
-        ("logreg", wrap(build_logreg(pos_weight, slim=slim)), None),
+        ("logreg", wrap(build_logreg(pos_weight, slim=slim, engineered=engineered)), None),
         (
             "random_forest",
-            wrap(build_random_forest(pos_weight)),
+            wrap(build_random_forest(pos_weight, engineered=engineered)),
             RF_PARAM_GRID if tune else None,
         ),
         (
             "xgboost",
-            wrap(build_xgboost(pos_weight)),
+            wrap(build_xgboost(pos_weight, engineered=engineered)),
             XGB_PARAM_GRID if tune else None,
         ),
         (
             "lightgbm",
-            wrap(build_lightgbm(pos_weight)),
+            wrap(build_lightgbm(pos_weight, engineered=engineered)),
             LGBM_PARAM_GRID if tune else None,
         ),
     ]
@@ -668,10 +742,16 @@ def tree_feature_importance(pipe: Pipeline, top_n: int | None = None) -> list[di
 
 
 def encode_training_matrix(
-    X_train: pd.DataFrame, *, drop_first: bool = False, scale_numeric: bool = False
+    X_train: pd.DataFrame,
+    *,
+    drop_first: bool = False,
+    scale_numeric: bool = False,
+    engineered: bool = True,
 ) -> tuple[pd.DataFrame, object]:
     """Fit the tree preprocessor on train data and return an encoded DataFrame."""
-    prep = preprocess.build_preprocessor(drop_first=drop_first, scale_numeric=scale_numeric)
+    prep = preprocess.build_preprocessor(
+        drop_first=drop_first, scale_numeric=scale_numeric, engineered=engineered
+    )
     matrix = prep.fit_transform(X_train)
     columns = prep.get_feature_names_out()
     return pd.DataFrame(matrix, columns=columns, index=X_train.index), prep
@@ -697,7 +777,9 @@ def _encoded_univariate_correlations(
     ]
 
 
-def run_probe_audit(X_train: pd.DataFrame, y_train: pd.Series) -> tuple[ProbeFeatureSelection, dict]:
+def run_probe_audit(
+    X_train: pd.DataFrame, y_train: pd.Series, *, engineered: bool = True
+) -> tuple[ProbeFeatureSelection, dict]:
     """Run Feature-engine probe selection on encoded training features.
 
     Compares Gini importances from a Random Forest (fit with CV) against synthetic
@@ -708,7 +790,7 @@ def run_probe_audit(X_train: pd.DataFrame, y_train: pd.Series) -> tuple[ProbeFea
     Univariate churn correlations are included for comparison with EDA — they measure
     marginal signal, while probe/RF importance is conditional on all other features.
     """
-    X_encoded, _ = encode_training_matrix(X_train)
+    X_encoded, _ = encode_training_matrix(X_train, engineered=engineered)
 
     selector = ProbeFeatureSelection(
         estimator=_random_forest_estimator(),
@@ -891,6 +973,8 @@ def main(
     pos_weight_mode: str = DEFAULT_POS_WEIGHT_MODE,
     threshold_strategy: str = DEFAULT_THRESHOLD_STRATEGY,
     recall_floor: float = DEFAULT_RECALL_FLOOR,
+    feature_set: str = DEFAULT_FEATURE_SET,
+    save_baseline: bool = False,
 ) -> dict:
     """Run training + model comparison and persist artifacts."""
     logging.basicConfig(
@@ -900,6 +984,11 @@ def main(
     grid_metric, select_metric = resolve_training_metrics(metric, grid_metric, select_metric)
     grid_scoring = resolve_sklearn_scorer(grid_metric)
     select_scoring = resolve_sklearn_scorer(select_metric)
+    engineered = feature_set == "engineered"
+    if feature_set not in preprocess.FEATURE_SETS:
+        raise ValueError(
+            f"feature_set must be one of {preprocess.FEATURE_SETS}, got {feature_set!r}"
+        )
 
     logger.info("Loading + cleaning data...")
     raw = None if sample is None else _load_sample(sample)
@@ -908,9 +997,15 @@ def main(
 
         raw = data.load_customers()
     cleaned = preprocess.clean(raw)
-    ds = preprocess.dataset_from_cleaned(cleaned)
+    ds = preprocess.dataset_from_cleaned(cleaned, engineered=engineered)
     demographics = preprocess.demographics_table(cleaned)
-    logger.info("rows=%d  features=%d  churn_rate=%.3f", len(ds.X), ds.X.shape[1], ds.y.mean())
+    logger.info(
+        "rows=%d  features=%d  churn_rate=%.3f  feature_set=%s",
+        len(ds.X),
+        ds.X.shape[1],
+        ds.y.mean(),
+        feature_set,
+    )
 
     # Stratified split; carry customer_id alongside for post-scoring fairness joins.
     X_train, X_test, y_train, y_test, _, customer_id_test = train_test_split(
@@ -941,6 +1036,7 @@ def main(
         pos_weight=pos_weight,
         threshold_strategy=threshold_strategy,
         recall_floor=recall_floor,
+        feature_set=feature_set,
     )
     log_run_config(run_config)
 
@@ -954,7 +1050,7 @@ def main(
     probe_summary: dict | None = None
     kept_features: list[str] | None = None
     if probe_audit or probe_train:
-        selector, probe_summary = run_probe_audit(X_train, y_train)
+        selector, probe_summary = run_probe_audit(X_train, y_train, engineered=engineered)
         save_probe_audit(selector, probe_summary, MODELS_DIR / "probe_audit")
         kept_features = probe_kept_features(probe_summary)
         logger.info(
@@ -965,7 +1061,7 @@ def main(
 
     full_results = train_model_suite(
         "all features",
-        build_model_specs(pos_weight, tune=tune),
+        build_model_specs(pos_weight, tune=tune, engineered=engineered),
         subdir="",
         X_train=X_train,
         y_train=y_train,
@@ -989,6 +1085,7 @@ def main(
             build_model_specs(
                 pos_weight,
                 tune=tune,
+                engineered=engineered,
                 selected_features=kept_features,
                 prep_feature_names=probe_summary["encoded_feature_names"],
             ),
@@ -1011,6 +1108,7 @@ def main(
     summary: dict = {
         "run_config": run_config,
         "metric": metric,
+        "feature_set": feature_set,
         "full_feature_set": {
             "n_raw_features": int(ds.X.shape[1]),
             "winner": _winner(full_results),
@@ -1043,6 +1141,14 @@ def main(
             if best_slim >= best_full
             else "full"
         )
+
+    baseline = load_baseline_summary()
+    if feature_set == "engineered" and baseline is not None:
+        summary["baseline_comparison"] = compare_to_baseline(baseline, full_results)
+        logger.info("Compared engineered run against baseline in %s", BASELINE_DIR)
+
+    if feature_set == "baseline" and (save_baseline or not (BASELINE_DIR / "summary.json").exists()):
+        save_baseline_snapshot(summary)
 
     # Back-compat keys used by earlier runs.
     summary["winner"] = summary["full_feature_set"]["winner"]
@@ -1089,6 +1195,20 @@ def _parse_args() -> argparse.Namespace:
         "--probe-train",
         action="store_true",
         help="train on probe-selected features and compare against the full feature set",
+    )
+    parser.add_argument(
+        "--feature-set",
+        choices=preprocess.FEATURE_SETS,
+        default=DEFAULT_FEATURE_SET,
+        help=(
+            "baseline=raw EDA features only; engineered=add avg_monthly_charge, "
+            f"tenure_bucket, addon_count, month_to_month_electronic (default: {DEFAULT_FEATURE_SET})"
+        ),
+    )
+    parser.add_argument(
+        "--save-baseline",
+        action="store_true",
+        help="when --feature-set=baseline, overwrite experiments/baseline/summary.json",
     )
     parser.add_argument(
         "--metric",
@@ -1155,4 +1275,6 @@ if __name__ == "__main__":
         pos_weight_mode=args.pos_weight,
         threshold_strategy=args.threshold_strategy,
         recall_floor=args.recall_floor,
+        feature_set=args.feature_set,
+        save_baseline=args.save_baseline,
     )

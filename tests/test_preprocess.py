@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from src.preprocess import build_preprocessor, clean, make_dataset
+from src.preprocess import build_preprocessor, clean, engineer_features, make_dataset
 
 
 def _row(*, tenure: int, total_charges, customer_id: str = "cust-1", **overrides) -> dict:
@@ -125,8 +125,8 @@ def test_dsl_declined_add_on_encodes_as_no():
 
 def test_tree_preprocessor_does_not_scale_numerics():
     df = pd.DataFrame([_row(tenure=12, total_charges=600, MonthlyCharges=99.5)])
-    ds = make_dataset(df)
-    prep = build_preprocessor(drop_first=False, scale_numeric=False)
+    ds = make_dataset(df, engineered=False)
+    prep = build_preprocessor(drop_first=False, scale_numeric=False, engineered=False)
     matrix = prep.fit_transform(ds.X)
     names = prep.get_feature_names_out()
     values = dict(zip(names, matrix[0]))
@@ -134,3 +134,35 @@ def test_tree_preprocessor_does_not_scale_numerics():
     assert values["num__tenure"] == 12.0
     assert values["num__MonthlyCharges"] == 99.5
     assert values["num__TotalCharges"] == 600.0
+
+
+def test_engineer_features_adds_eda_columns():
+    df = pd.DataFrame(
+        [
+            _row(
+                tenure=24,
+                total_charges=1200,
+                Contract="Month-to-month",
+                PaymentMethod="Electronic check",
+                OnlineSecurity="Yes",
+                StreamingTV="Yes",
+            )
+        ]
+    )
+    out = engineer_features(clean(df))
+
+    assert out["avg_monthly_charge"].iloc[0] == 50.0
+    assert out["tenure_bucket"].iloc[0] == "13-24"
+    assert out["addon_count"].iloc[0] == 2.0
+    assert out["month_to_month_electronic"].iloc[0] == 1.0
+
+
+def test_make_dataset_engineered_has_more_features_than_baseline():
+    df = pd.DataFrame([_row(tenure=12, total_charges=600)])
+
+    baseline = make_dataset(df, engineered=False)
+    engineered = make_dataset(df, engineered=True)
+
+    assert engineered.X.shape[1] == baseline.X.shape[1] + 4
+    assert "avg_monthly_charge" in engineered.X.columns
+    assert "tenure_bucket" in engineered.X.columns

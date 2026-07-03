@@ -52,6 +52,12 @@ tuned tree candidates.
   (`--threshold-strategy f1`). Use `recall_floor` only when you want to cap
   false positives explicitly (e.g. `--threshold-strategy recall_floor --recall-floor 0.75`).
 - **Imbalance:** loss reweighting only (no oversampling); default `--pos-weight sqrt`.
+- **Feature set:** default `engineered` adds `avg_monthly_charge`, `tenure_bucket`,
+  `addon_count`, and `month_to_month_electronic`. Raw-only runs use
+  `--feature-set baseline`.
+- **Baseline snapshot:** `make train-baseline` saves results under
+  `experiments/baseline/summary.json`. Engineered runs include `baseline_comparison`
+  when that file exists.
 - **Reported:** CV selection score, PR-AUC, ROC-AUC, precision, recall, F1,
   confusion matrix.
 - **Fairness:** after test scoring, join protected attributes back on `customerID`
@@ -63,11 +69,14 @@ Each run prints and saves a `run_config` block listing every knob used.
 ## How to run
 
 ```bash
-# full run with project defaults (metric=f1, pos=sqrt, threshold=f1)
+# full run with engineered features (default)
 make train
 
-# override defaults
-make train METRIC=f2 THRESHOLD_STRATEGY=recall_floor RECALL_FLOOR=0.75
+# freeze / refresh the raw-feature baseline for comparison
+make train-baseline
+
+# train without engineered features (does not overwrite baseline unless --save-baseline)
+make train FEATURE_SET=baseline
 
 # quick smoke run on fewer rows
 make train-smoke
@@ -86,6 +95,7 @@ CLI flags (defaults shown):
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
+| `--feature-set` | `engineered` | `baseline` (raw) or `engineered` (+4 EDA features) |
 | `--metric` | `f1` | Grid search **and** winner selection (same metric) |
 | `--grid-metric` | *(same as metric)* | Advanced override for grid search only |
 | `--select-metric` | *(same as metric)* | Advanced override for winner only |
