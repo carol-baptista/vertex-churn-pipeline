@@ -9,10 +9,10 @@
 TARGET ?= tests/
 ARGS ?=
 
-# Training defaults (override on the command line, e.g. make train METRIC=f1)
-METRIC ?= f2
+# Training defaults (override on the command line, e.g. make train METRIC=f2)
+METRIC ?= f1
 POS_WEIGHT ?= sqrt
-THRESHOLD_STRATEGY ?= recall_floor
+THRESHOLD_STRATEGY ?= f1
 RECALL_FLOOR ?= 0.75
 
 TRAIN_ARGS = \
@@ -38,7 +38,7 @@ help:
 	@echo "  make train-probe-compare  Full vs probe-selected training comparison"
 	@echo ""
 	@echo "Override training knobs, e.g.:"
-	@echo "  make train METRIC=f1 POS_WEIGHT=full THRESHOLD_STRATEGY=f1"
+	@echo "  make train METRIC=f2 THRESHOLD_STRATEGY=f2 POS_WEIGHT=full"
 
 sync:
 	uv sync --extra dev

@@ -47,9 +47,10 @@ tuned tree candidates.
 
 - **Split:** 80/20, stratified on `Churn`, `random_state=42`.
 - **Metric (grid + winner):** one `--metric` drives both hyperparameter tuning
-  and winner selection (default `f2`; recall-leaning but still penalises spam).
-- **Threshold:** recall floor (default: catch ≥75% of churners, then maximise
-  precision) via `--threshold-strategy recall_floor --recall-floor 0.75`.
+  and winner selection (default `f1`).
+- **Threshold:** max F1 on out-of-fold train predictions by default
+  (`--threshold-strategy f1`). Use `recall_floor` only when you want to cap
+  false positives explicitly (e.g. `--threshold-strategy recall_floor --recall-floor 0.75`).
 - **Imbalance:** loss reweighting only (no oversampling); default `--pos-weight sqrt`.
 - **Reported:** CV selection score, PR-AUC, ROC-AUC, precision, recall, F1,
   confusion matrix.
@@ -62,11 +63,11 @@ Each run prints and saves a `run_config` block listing every knob used.
 ## How to run
 
 ```bash
-# full run with project defaults (metric=f2, pos=sqrt, recall>=0.75)
+# full run with project defaults (metric=f1, pos=sqrt, threshold=f1)
 make train
 
 # override defaults
-make train METRIC=f1 POS_WEIGHT=full THRESHOLD_STRATEGY=f1
+make train METRIC=f2 THRESHOLD_STRATEGY=recall_floor RECALL_FLOOR=0.75
 
 # quick smoke run on fewer rows
 make train-smoke
@@ -85,12 +86,12 @@ CLI flags (defaults shown):
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
-| `--metric` | `f2` | Grid search **and** winner selection (same metric) |
+| `--metric` | `f1` | Grid search **and** winner selection (same metric) |
 | `--grid-metric` | *(same as metric)* | Advanced override for grid search only |
 | `--select-metric` | *(same as metric)* | Advanced override for winner only |
 | `--pos-weight` | `sqrt` | Imbalance correction strength |
-| `--threshold-strategy` | `recall_floor` | OOF threshold tuning |
-| `--recall-floor` | `0.75` | Min recall when using recall floor |
+| `--threshold-strategy` | `f1` | OOF threshold tuning (max F1) |
+| `--recall-floor` | `0.75` | Min recall when using `recall_floor` strategy |
 
 Outputs:
 
@@ -101,8 +102,30 @@ models/
   xgboost/          model.joblib   metrics.json
   lightgbm/         model.joblib   metrics.json
   probe_audit/      probe_audit.json   probe_audit.png   # with --probe-feature / make train-probe
-  summary.json      # comparison + winner by CV PR-AUC
+  summary.json      # comparison + winner by CV selection metric (default: F1)
 ```
+
+## Training decisions (experiments → defaults)
+
+We compared several knobs on the full telco dataset. Summary of what we tried and
+what we kept:
+
+| Experiment | Random Forest (test) | Verdict |
+| --- | --- | --- |
+| PR-AUC grid + `full` pos weight + F1 threshold | recall ~0.77, precision ~0.42 | Too many false positives (wasted retention mail) |
+| F1 grid + `sqrt` pos weight + F1 threshold | recall **~0.78**, precision **~0.51**, F1 **~0.62** | **Sweet spot — project default** |
+| F2 grid + `sqrt` pos weight + F2 threshold | recall ~0.88, precision ~0.42 | Recall too high; precision collapses (LightGBM flags almost everyone) |
+| `recall_floor` threshold (≥0.75) | recall ~0.72, precision ~0.54 | Sacrifices recall for small precision gain vs F1 threshold |
+
+**Chosen defaults** (plain `make train`):
+
+- **`--metric f1`** — same metric for grid search and winner selection
+- **`--threshold-strategy f1`** — max F1 on out-of-fold train predictions
+- **`--pos-weight sqrt`** — gentler imbalance correction than `full`; keeps recall
+  high (~78%) while lifting precision from ~42% to ~51%
+
+Champion candidate from the default run: **Random Forest** (best test PR-AUC among
+tree models; strong recall/precision balance at the F1 operating point).
 
 Random Forest importances are ranked by Gini importance on the **encoded** feature
 names (e.g. `cat__Contract_Two year`). The PNG shows the top 20; the JSON lists all.

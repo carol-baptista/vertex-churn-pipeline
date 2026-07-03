@@ -10,6 +10,7 @@ from src.preprocess import make_dataset
 from src.train import (
     best_threshold,
     build_random_forest,
+    evaluate,
     probe_kept_features,
     resolve_sklearn_scorer,
     resolve_training_metrics,
@@ -82,8 +83,19 @@ def test_with_feature_selector_reduces_encoded_width():
 
 def test_resolve_sklearn_scorer_aliases():
     assert resolve_sklearn_scorer("pr_auc") == "average_precision"
-    assert resolve_sklearn_scorer("f2") == "f2"
+    assert resolve_sklearn_scorer("f1") == "f1"
     assert resolve_sklearn_scorer("mcc") == "matthews_corrcoef"
+    assert callable(resolve_sklearn_scorer("f2"))
+
+
+def test_evaluate_includes_f2_at_threshold():
+    y_true = np.array([1, 1, 0, 0, 0])
+    y_proba = np.array([0.9, 0.8, 0.4, 0.3, 0.1])
+    metrics = evaluate(y_true, y_proba, threshold=0.5)
+
+    assert "f1" in metrics
+    assert "f2" in metrics
+    assert metrics["f2"] >= metrics["f1"]
 
 
 def test_resolve_training_metrics_defaults_to_single_metric():

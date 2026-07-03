@@ -9,8 +9,8 @@ Trains four models on the *same* feature set:
 - **LightGBM** - gradient-boosted candidate, lightly tuned with a small grid.
 
 Tree models use ``scale_pos_weight`` / ``class_weight`` for imbalance. One metric
-(default **F2**) drives both grid search and winner selection. Threshold tuning
-uses a separate strategy (default: recall floor at 0.75).
+(default **F1**) drives both grid search and winner selection. Threshold tuning
+uses the same metric by default (max F1 on OOF predictions).
 
 Run it:
 
@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 import joblib
@@ -41,6 +42,8 @@ from sklearn.metrics import (
     average_precision_score,
     confusion_matrix,
     f1_score,
+    fbeta_score,
+    make_scorer,
     precision_recall_curve,
     precision_score,
     recall_score,
@@ -66,9 +69,9 @@ TEST_SIZE = 0.20
 MODELS_DIR = config.REPO_ROOT / "models"
 
 # Project defaults (also used by Makefile `make train`).
-DEFAULT_METRIC = "f2"
+DEFAULT_METRIC = "f1"
 DEFAULT_POS_WEIGHT_MODE = "sqrt"
-DEFAULT_THRESHOLD_STRATEGY = "recall_floor"
+DEFAULT_THRESHOLD_STRATEGY = "f1"
 DEFAULT_RECALL_FLOOR = 0.75
 
 METRIC_CHOICES = ("pr_auc", "f1", "f2", "mcc")
@@ -78,20 +81,23 @@ POS_WEIGHT_MODES = ("full", "sqrt", "none")
 # Legacy alias kept for callers that import SELECTION_METRIC.
 SELECTION_METRIC = "average_precision"
 
+# sklearn accepts "f1" as a string but not "f2"; use an explicit scorer instead.
+F2_SCORER = make_scorer(fbeta_score, beta=2)
 
-def resolve_sklearn_scorer(metric: str) -> str:
-    """Map CLI metric names to sklearn ``scoring`` strings."""
-    mapping = {
+
+def resolve_sklearn_scorer(metric: str) -> str | Callable[..., float]:
+    """Map CLI metric names to sklearn ``scoring`` strings or scorers."""
+    mapping: dict[str, str | Callable[..., float]] = {
         "pr_auc": "average_precision",
         "average_precision": "average_precision",
         "f1": "f1",
-        "f2": "f2",
+        "f2": F2_SCORER,
         "mcc": "matthews_corrcoef",
     }
     key = metric.lower()
     if key not in mapping:
         raise ValueError(
-            f"Unknown metric {metric!r}; expected one of {tuple(mapping)}"
+            f"Unknown metric {metric!r}; expected one of {tuple(METRIC_CHOICES)}"
         )
     return mapping[key]
 
@@ -118,9 +124,9 @@ def build_run_config(
         "probe_train": probe_train,
         "metric": metric,
         "grid_metric": grid_metric,
-        "grid_scoring": resolve_sklearn_scorer(grid_metric),
+        "grid_scoring": grid_metric,
         "select_metric": select_metric,
-        "select_scoring": resolve_sklearn_scorer(select_metric),
+        "select_scoring": select_metric,
         "metrics_aligned": grid_metric == select_metric,
         "pos_weight_mode": pos_weight_mode,
         "pos_weight_value": round(pos_weight, 4),
@@ -212,6 +218,7 @@ def evaluate(y_true: np.ndarray, y_proba: np.ndarray, threshold: float) -> dict:
         "precision": float(precision_score(y_true, y_pred, zero_division=0)),
         "recall": float(recall_score(y_true, y_pred)),
         "f1": float(f1_score(y_true, y_pred)),
+        "f2": float(fbeta_score(y_true, y_pred, beta=2)),
         "confusion_matrix": confusion_matrix(y_true, y_pred).tolist(),
     }
 
@@ -485,20 +492,22 @@ def probe_kept_features(audit: dict) -> list[str]:
     ]
 
 
-def _metrics_block(results: dict[str, dict]) -> dict:
+def _metrics_block(results: dict[str, dict], *, metric: str) -> dict:
     block: dict[str, dict] = {}
+    cv_key = f"cv_{metric}"
     for k, v in results.items():
         entry = {
-            "cv_score": v["cv_score"],
+            cv_key: v["cv_score"],
             "test_pr_auc": v["pr_auc"],
             "test_roc_auc": v["roc_auc"],
             "test_recall": v["recall"],
             "test_precision": v["precision"],
             "test_f1": v["f1"],
+            "test_f2": v["f2"],
             "threshold": v["threshold"],
         }
         if "cv_grid_score" in v:
-            entry["cv_grid_score"] = v["cv_grid_score"]
+            entry[f"{cv_key}_grid"] = v["cv_grid_score"]
         block[k] = entry
     return block
 
@@ -560,8 +569,9 @@ def train_one(
     cv: StratifiedKFold,
     param_grid: dict | None = None,
     *,
-    grid_scoring: str,
-    select_scoring: str,
+    grid_scoring: str | Callable[..., float],
+    select_scoring: str | Callable[..., float],
+    grid_metric: str,
     select_metric: str,
     threshold_strategy: str,
     recall_floor: float,
@@ -574,7 +584,7 @@ def train_one(
         logger.info(
             "Grid search over %d combinations (scoring=%s)...",
             _grid_size(param_grid),
-            grid_scoring,
+            grid_metric,
         )
         search = GridSearchCV(
             pipe, param_grid, scoring=grid_scoring, cv=cv, n_jobs=-1, refit=True
@@ -583,7 +593,7 @@ def train_one(
         pipe = search.best_estimator_
         grid_cv_score = float(search.best_score_)
         logger.info("Best params: %s", search.best_params_)
-        logger.info("Grid CV score (%s): %.4f", grid_scoring, grid_cv_score)
+        logger.info("Grid CV score (%s): %.4f", grid_metric, grid_cv_score)
     else:
         pipe.fit(X_train, y_train)
 
@@ -625,12 +635,13 @@ def train_one(
     )
 
     logger.info(
-        "TEST  pr_auc=%.4f roc_auc=%.4f precision=%.3f recall=%.3f f1=%.3f",
+        "TEST  pr_auc=%.4f roc_auc=%.4f precision=%.3f recall=%.3f f1=%.3f f2=%.3f",
         metrics["pr_auc"],
         metrics["roc_auc"],
         metrics["precision"],
         metrics["recall"],
         metrics["f1"],
+        metrics["f2"],
     )
     return pipe, metrics
 
@@ -826,8 +837,9 @@ def train_model_suite(
     customer_id_test: pd.Series,
     demographics: pd.DataFrame,
     cv: StratifiedKFold,
-    grid_scoring: str,
-    select_scoring: str,
+    grid_scoring: str | Callable[..., float],
+    select_scoring: str | Callable[..., float],
+    grid_metric: str,
     select_metric: str,
     threshold_strategy: str,
     recall_floor: float,
@@ -849,6 +861,7 @@ def train_model_suite(
             param_grid=param_grid,
             grid_scoring=grid_scoring,
             select_scoring=select_scoring,
+            grid_metric=grid_metric,
             select_metric=select_metric,
             threshold_strategy=threshold_strategy,
             recall_floor=recall_floor,
@@ -963,6 +976,7 @@ def main(
         cv=cv,
         grid_scoring=grid_scoring,
         select_scoring=select_scoring,
+        grid_metric=grid_metric,
         select_metric=select_metric,
         threshold_strategy=threshold_strategy,
         recall_floor=recall_floor,
@@ -988,6 +1002,7 @@ def main(
             cv=cv,
             grid_scoring=grid_scoring,
             select_scoring=select_scoring,
+            grid_metric=grid_metric,
             select_metric=select_metric,
             threshold_strategy=threshold_strategy,
             recall_floor=recall_floor,
@@ -999,7 +1014,7 @@ def main(
         "full_feature_set": {
             "n_raw_features": int(ds.X.shape[1]),
             "winner": _winner(full_results),
-            "models": _metrics_block(full_results),
+            "models": _metrics_block(full_results, metric=metric),
         },
         "probe_audit": probe_audit or probe_train,
         "probe_train": probe_train,
@@ -1016,7 +1031,7 @@ def main(
         summary["probe_selected_feature_set"] = {
             "n_encoded_features": len(kept_features),
             "winner": _winner(slim_results),
-            "models": _metrics_block(slim_results),
+            "models": _metrics_block(slim_results, metric=metric),
         }
         summary["feature_set_comparison"] = _compare_feature_sets(
             full_results, slim_results
