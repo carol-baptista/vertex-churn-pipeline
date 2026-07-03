@@ -159,7 +159,7 @@ def build_logreg() -> Pipeline:
     """Baseline: Logistic Regression with balanced class weights (untuned)."""
     return Pipeline(
         steps=[
-            ("prep", preprocess.build_preprocessor(drop_first=True)),
+            ("prep", preprocess.build_preprocessor(drop_first=True, scale_numeric=True)),
             (
                 "model",
                 LogisticRegression(
@@ -176,7 +176,7 @@ def build_xgboost(scale_pos_weight: float) -> Pipeline:
     """Candidate: XGBoost with imbalance handled via scale_pos_weight."""
     return Pipeline(
         steps=[
-            ("prep", preprocess.build_preprocessor(drop_first=False)),
+            ("prep", preprocess.build_preprocessor(drop_first=False, scale_numeric=False)),
             (
                 "model",
                 XGBClassifier(

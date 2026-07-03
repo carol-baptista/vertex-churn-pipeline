@@ -5,12 +5,12 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from src.preprocess import clean, make_dataset
+from src.preprocess import build_preprocessor, clean, make_dataset
 
 
-def _row(*, tenure: int, total_charges, customer_id: str = "cust-1") -> dict:
+def _row(*, tenure: int, total_charges, customer_id: str = "cust-1", **overrides) -> dict:
     """Minimal valid customers-table row for preprocessing tests."""
-    return {
+    row = {
         "customerID": customer_id,
         "gender": "Female",
         "SeniorCitizen": 0,
@@ -33,6 +33,8 @@ def _row(*, tenure: int, total_charges, customer_id: str = "cust-1") -> dict:
         "TotalCharges": total_charges,
         "Churn": False,
     }
+    row.update(overrides)
+    return row
 
 
 @pytest.mark.parametrize("blank_value", ["", " ", pd.NA])
@@ -69,3 +71,66 @@ def test_make_dataset_drops_bad_total_charges_keeps_new_customers():
     assert set(ds.X.index) == {0, 2}
     assert ds.X.loc[0, "TotalCharges"] == 0.0
     assert ds.X.loc[2, "TotalCharges"] == 1200.50
+
+
+def test_no_internet_does_not_encode_add_on_as_declined():
+    df = pd.DataFrame(
+        [
+            _row(
+                tenure=12,
+                total_charges=600,
+                customer_id="no-internet",
+                InternetService="No",
+                OnlineSecurity="No internet service",
+                OnlineBackup="No internet service",
+                DeviceProtection="No internet service",
+                TechSupport="No internet service",
+                StreamingTV="No internet service",
+                StreamingMovies="No internet service",
+            )
+        ]
+    )
+    ds = make_dataset(df)
+    prep = build_preprocessor(drop_first=False)
+    matrix = prep.fit_transform(ds.X)
+    names = prep.get_feature_names_out()
+    values = dict(zip(names, matrix[0]))
+
+    assert values["cat__InternetService_No"] == 1.0
+    assert values.get("cat__OnlineSecurity_No", 0.0) == 0.0
+    assert "cat__OnlineSecurity_No internet service" not in values
+
+
+def test_dsl_declined_add_on_encodes_as_no():
+    df = pd.DataFrame(
+        [
+            _row(
+                tenure=12,
+                total_charges=600,
+                customer_id="dsl-declined",
+                InternetService="DSL",
+                OnlineSecurity="No",
+            )
+        ]
+    )
+    ds = make_dataset(df)
+    prep = build_preprocessor(drop_first=False)
+    matrix = prep.fit_transform(ds.X)
+    names = prep.get_feature_names_out()
+    values = dict(zip(names, matrix[0]))
+
+    assert values["cat__InternetService_DSL"] == 1.0
+    assert values["cat__OnlineSecurity_No"] == 1.0
+
+
+def test_tree_preprocessor_does_not_scale_numerics():
+    df = pd.DataFrame([_row(tenure=12, total_charges=600, MonthlyCharges=99.5)])
+    ds = make_dataset(df)
+    prep = build_preprocessor(drop_first=False, scale_numeric=False)
+    matrix = prep.fit_transform(ds.X)
+    names = prep.get_feature_names_out()
+    values = dict(zip(names, matrix[0]))
+
+    assert values["num__tenure"] == 12.0
+    assert values["num__MonthlyCharges"] == 99.5
+    assert values["num__TotalCharges"] == 600.0

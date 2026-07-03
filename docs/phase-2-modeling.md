@@ -16,16 +16,19 @@ training code. Produces two trained models and registry-ready artifacts.
 1. **Clean** (`preprocess.clean`)
    - `TotalCharges` STRING -> numeric. New customers (`tenure == 0`) -> `0`; any
      other blank is dropped and logged as a data error.
-   - Collapse `"No internet service"` / `"No phone service"` -> `"No"` (lossless).
    - Cast nullable `Int64`/`boolean` columns so sklearn transformers behave.
+   - Raw category values are kept (no pre-encoding recode of `"No internet service"`).
 2. **Split features / target / join key** (`preprocess.make_dataset`)
    - Drop protected attributes (e.g. `gender`) from features. Keep `customerID` on
      `Dataset.customer_id` as a join key only (never passed to the model).
    - Build a demographics table (`customerID` + protected cols) and merge back
      after scoring for fairness audits (`train.fairness_audit`).
 3. **Encode** (`preprocess.build_preprocessor`)
-   - `StandardScaler` on numerics, `OneHotEncoder(handle_unknown="ignore")` on
-     categoricals. `drop_first=True` for Logistic Regression, `False` for XGBoost.
+   - `StandardScaler` on numerics for Logistic Regression only; tree models use
+     raw numeric values (`scale_numeric=False`). Categoricals are one-hot encoded,
+     then redundant `*No internet service` / `*No phone service` dummies are dropped.
+     `handle_unknown="ignore"`. `drop_first=True` for Logistic Regression, `False`
+     for XGBoost.
 
 ## Models
 
@@ -53,13 +56,13 @@ LogReg). Fair comparison = baseline at defaults vs. a lightly tuned candidate.
 
 ```bash
 # full run (reads from BigQuery via ADC)
-python -m src.train
+make train
 
 # quick smoke run on fewer rows
-python -m src.train --sample 2000
+make train-smoke
 
 # skip the XGBoost grid search (faster)
-python -m src.train --no-tune
+make train-fast
 ```
 
 Outputs:
