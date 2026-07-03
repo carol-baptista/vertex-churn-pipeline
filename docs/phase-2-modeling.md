@@ -8,7 +8,7 @@ training code. Produces two trained models and registry-ready artifacts.
 | File | Purpose |
 | --- | --- |
 | `src/preprocess.py` | Clean the raw table + build the feature `ColumnTransformer`. |
-| `src/train.py` | Train + compare Logistic Regression and XGBoost, evaluate, save artifacts. |
+| `src/train.py` | Train + compare Logistic Regression, Random Forest, XGBoost, and LightGBM; evaluate, save artifacts. |
 | `models/` | Output: fitted pipelines + metrics (git-ignored). |
 
 ## What the pipeline does
@@ -35,44 +35,92 @@ training code. Produces two trained models and registry-ready artifacts.
 | Model | Role | Imbalance | Tuning |
 | --- | --- | --- | --- |
 | Logistic Regression | interpretable **baseline** | `class_weight="balanced"` | none (defaults) |
-| XGBoost | **candidate** | `scale_pos_weight = neg/pos` | small grid via stratified CV |
+| Random Forest | tree **candidate** | `class_weight="balanced"` | small grid via stratified CV |
+| XGBoost | boosted **candidate** | `scale_pos_weight = neg/pos` | small grid via stratified CV |
+| LightGBM | boosted **candidate** | `scale_pos_weight = neg/pos` | small grid via stratified CV |
 
-Both see the **same feature set**; only the representation differs (drop-first for
-LogReg). Fair comparison = baseline at defaults vs. a lightly tuned candidate.
+All four see the **same raw feature columns**; only the representation differs (scaling
+and `drop_first` for LogReg). Fair comparison = baseline at defaults vs. lightly
+tuned tree candidates.
 
 ## Evaluation
 
 - **Split:** 80/20, stratified on `Churn`, `random_state=42`.
-- **Selection metric:** PR-AUC (average precision) - the right headline for an
-  imbalanced "catch the churners" problem.
-- **Reported:** PR-AUC, ROC-AUC, precision, recall, F1, confusion matrix.
-- **Threshold:** tuned to maximise F1 on **out-of-fold training** predictions, then
-  applied to the test set (so test metrics aren't tuned on the test set).
+- **Metric (grid + winner):** one `--metric` drives both hyperparameter tuning
+  and winner selection (default `f2`; recall-leaning but still penalises spam).
+- **Threshold:** recall floor (default: catch ≥75% of churners, then maximise
+  precision) via `--threshold-strategy recall_floor --recall-floor 0.75`.
+- **Imbalance:** loss reweighting only (no oversampling); default `--pos-weight sqrt`.
+- **Reported:** CV selection score, PR-AUC, ROC-AUC, precision, recall, F1,
+  confusion matrix.
 - **Fairness:** after test scoring, join protected attributes back on `customerID`
   and slice metrics by group (e.g. gender) to check for disparate impact via
   proxy features. Protected columns are never model inputs.
 
+Each run prints and saves a `run_config` block listing every knob used.
+
 ## How to run
 
 ```bash
-# full run (reads from BigQuery via ADC)
+# full run with project defaults (metric=f2, pos=sqrt, recall>=0.75)
 make train
+
+# override defaults
+make train METRIC=f1 POS_WEIGHT=full THRESHOLD_STRATEGY=f1
 
 # quick smoke run on fewer rows
 make train-smoke
 
-# skip the XGBoost grid search (faster)
+# skip the tree-model grid searches (faster)
 make train-fast
+
+# Feature-engine probe audit on encoded train data (analysis only)
+make train-probe
+
+# Train full + probe-selected sets and compare in summary.json
+make train-probe-compare
 ```
+
+CLI flags (defaults shown):
+
+| Flag | Default | Purpose |
+| --- | --- | --- |
+| `--metric` | `f2` | Grid search **and** winner selection (same metric) |
+| `--grid-metric` | *(same as metric)* | Advanced override for grid search only |
+| `--select-metric` | *(same as metric)* | Advanced override for winner only |
+| `--pos-weight` | `sqrt` | Imbalance correction strength |
+| `--threshold-strategy` | `recall_floor` | OOF threshold tuning |
+| `--recall-floor` | `0.75` | Min recall when using recall floor |
 
 Outputs:
 
 ```
 models/
-  logreg/    model.joblib   metrics.json
-  xgboost/   model.joblib   metrics.json
-  summary.json     # comparison + winner by CV PR-AUC
+  logreg/           model.joblib   metrics.json
+  random_forest/    model.joblib   metrics.json   feature_importance.json   feature_importance.png
+  xgboost/          model.joblib   metrics.json
+  lightgbm/         model.joblib   metrics.json
+  probe_audit/      probe_audit.json   probe_audit.png   # with --probe-feature / make train-probe
+  summary.json      # comparison + winner by CV PR-AUC
 ```
+
+Random Forest importances are ranked by Gini importance on the **encoded** feature
+names (e.g. `cat__Contract_Two year`). The PNG shows the top 20; the JSON lists all.
+
+### Probe audit (`--probe-feature`)
+
+Uses [Feature-engine `ProbeFeatureSelection`](https://feature-engine.trainindata.com/en/latest/user_guide/selection/ProbeFeatureSelection.html) on the **encoded training fold** only:
+
+- Adds `n_probes=3` **binary** probe features (matched to one-hot encoded columns)
+- Fits `RandomForestClassifier` with 5-fold CV (`collective=True`)
+- Drops features whose Gini importance is below the **mean probe importance**
+- Does **not** change the models saved under `models/logreg/` etc. (audit-only)
+
+Check `models/probe_audit/probe_audit.json` for `features_to_drop`,
+`probe_threshold_value`, and `top_univariate_correlations` (EDA-style marginal
+signal). Probe importance is **conditional** — a feature with high univariate
+correlation can rank below the probe when correlated features (e.g. Electronic
+check vs Month-to-month) absorb the split budget.
 
 ## Reviewer checklist (is this deployable?)
 
