@@ -10,27 +10,9 @@ Run after ``make train``::
 from __future__ import annotations
 
 import argparse
-import json
 import sys
-from pathlib import Path
 
-from . import config
-
-MODELS_DIR = config.REPO_ROOT / "models"
-DEFAULT_MODEL = "random_forest"
-
-
-def metrics_path(model: str) -> Path:
-    return MODELS_DIR / model / "metrics.json"
-
-
-def load_metrics(model: str) -> dict:
-    path = metrics_path(model)
-    if not path.exists():
-        raise FileNotFoundError(
-            f"{path} not found. Run `make train` first (or check MODEL=...)."
-        )
-    return json.loads(path.read_text())
+from .champion import DEFAULT_MODEL, load_metrics, metrics_path
 
 
 def format_fairness_table(fairness: dict[str, dict]) -> str:

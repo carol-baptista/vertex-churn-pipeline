@@ -13,51 +13,19 @@ import argparse
 import json
 from typing import Any
 
-import joblib
 import pandas as pd
 from google.cloud import bigquery
-from sklearn.pipeline import Pipeline
 
 from . import config, data
-from .inspect import DEFAULT_MODEL, MODELS_DIR, load_metrics
-from .preprocess import ID_COL, TARGET, make_dataset
-
-
-def load_pipeline(model: str) -> Pipeline:
-    path = MODELS_DIR / model / "model.joblib"
-    if not path.exists():
-        raise FileNotFoundError(
-            f"{path} not found. Run `make train` first (or check --model=...)."
-        )
-    pipe = joblib.load(path)
-    if not hasattr(pipe, "predict_proba"):
-        raise TypeError(f"Expected a sklearn Pipeline, got {type(pipe)!r}")
-    return pipe
-
-
-def threshold_for_model(model: str) -> float:
-    metrics = load_metrics(model)
-    threshold = metrics.get("threshold")
-    if threshold is None:
-        threshold = metrics.get("test", {}).get("threshold")
-    if threshold is None:
-        raise KeyError(f"No threshold in {metrics_path(model)}")
-    return float(threshold)
-
-
-def metrics_path(model: str):
-    return MODELS_DIR / model / "metrics.json"
-
-
-def score_features(pipe: Pipeline, X: pd.DataFrame, threshold: float) -> dict[str, Any]:
-    """Return probability + binary flag for one or more feature rows."""
-    proba = pipe.predict_proba(X)[:, 1]
-    flags = (proba >= threshold).astype(int)
-    return {
-        "churn_probability": proba.tolist(),
-        "churn_flag": flags.tolist(),
-        "threshold": threshold,
-    }
+from .champion import (
+    CHAMPION_MODEL,
+    DEFAULT_MODEL,
+    load_metrics,
+    load_pipeline,
+    load_threshold,
+    score_rows,
+)
+from .preprocess import ID_COL, make_dataset
 
 
 def load_customer_row(*, customer_id: str | None, row: int) -> pd.DataFrame:
@@ -93,19 +61,16 @@ def predict_one(
 ) -> dict[str, Any]:
     """Load artifact, fetch one BQ row, score at the saved validation threshold."""
     pipe = load_pipeline(model)
-    threshold = threshold_for_model(model)
+    threshold = load_threshold(model)
     raw = load_customer_row(customer_id=customer_id, row=row)
     ds = make_dataset(raw, engineered=engineered)
 
-    scores = score_features(pipe, ds.X, threshold)
-    actual = ds.y.iloc[0]
+    scored = score_rows(pipe, ds.X, threshold)[0]
     return {
         "model": model,
         "customer_id": ds.customer_id.iloc[0],
-        "actual_churn": int(actual),
-        "churn_probability": scores["churn_probability"][0],
-        "churn_flag": scores["churn_flag"][0],
-        "threshold": threshold,
+        "actual_churn": int(ds.y.iloc[0]),
+        **scored,
     }
 
 
