@@ -49,6 +49,15 @@ if ! bq show --dataset "${GCP_PROJECT_ID}:${BQ_DATASET}" &>/dev/null; then
   bq --location="${GCP_REGION}" mk --dataset "${GCP_PROJECT_ID}:${BQ_DATASET}"
 fi
 
+: "${VERTEX_ARTIFACT_REPO:=vertex-churn}"
+echo "Creating Artifact Registry repo (skip if it already exists)..."
+if ! gcloud artifacts repositories describe "${VERTEX_ARTIFACT_REPO}" \
+  --location="${GCP_REGION}" &>/dev/null; then
+  gcloud artifacts repositories create "${VERTEX_ARTIFACT_REPO}" \
+    --repository-format=docker \
+    --location="${GCP_REGION}"
+fi
+
 echo ""
 echo "Done. Next steps:"
 echo "  1. Copy .env.example to .env and fill in values"

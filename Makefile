@@ -1,10 +1,8 @@
 # Usage:
 #   make test
-#   make test TARGET=tests/test_preprocess.py
-#   make test TARGET=tests/test_preprocess.py::test_tenure_zero_fills_blank_total_charges
-#   make test ARGS="-k tenure_zero -v"
 #   make train
-#   make train-baseline   # freeze raw-feature baseline under experiments/baseline/
+#   make package          # Phase 3: assemble RF serving bundle
+#   make deploy           # Phase 3: upload + register + deploy (GCP cost)
 
 TARGET ?= tests/
 ARGS ?=
@@ -19,6 +17,10 @@ MODEL ?= random_forest
 ROW ?= 0
 CUSTOMER_ID ?=
 
+# Phase 3 deploy flags
+DRY_RUN ?= 0
+REGISTER_ONLY ?= 0
+
 COMMON_TRAIN_ARGS = \
 	--metric $(METRIC) \
 	--pos-weight $(POS_WEIGHT) \
@@ -29,7 +31,15 @@ TRAIN_ARGS = \
 	--feature-set $(FEATURE_SET) \
 	$(COMMON_TRAIN_ARGS)
 
-.PHONY: help sync test train train-baseline train-smoke train-fast train-probe train-probe-compare fairness predict predict
+DEPLOY_EXTRA :=
+ifeq ($(DRY_RUN),1)
+DEPLOY_EXTRA += --dry-run
+endif
+ifeq ($(REGISTER_ONLY),1)
+DEPLOY_EXTRA += --register-only
+endif
+
+.PHONY: help sync test train train-baseline train-smoke train-fast train-probe train-probe-compare fairness predict package package-test deploy undeploy
 
 help:
 	@echo "Targets:"
@@ -45,6 +55,14 @@ help:
 	@echo "  make predict           Score one BigQuery row with saved artifact"
 	@echo "  make predict CUSTOMER_ID=7590-VHVEG"
 	@echo ""
+	@echo "Phase 3 deploy (Random Forest champion only):"
+	@echo "  make package           Copy RF artifact -> serving/churn-rf/v1/"
+	@echo "  make package-test      Local bundle smoke test (free)"
+	@echo "  make deploy DRY_RUN=1  Print deploy plan without GCP changes"
+	@echo "  make deploy            Upload GCS + CPR image + Registry + Endpoint"
+	@echo "  make deploy REGISTER_ONLY=1  Register model, skip endpoint"
+	@echo "  make undeploy          Stop endpoint billing"
+	@echo ""
 	@echo "Training options (feature_set=$(FEATURE_SET), metric=$(METRIC), pos=$(POS_WEIGHT)):"
 	@echo "  make train FEATURE_SET=engineered  Demo engineered features for interviews"
 	@echo "  make train-smoke       Quick run on 2000 rows, no tuning"
@@ -55,10 +73,6 @@ help:
 	@echo "Artifacts (after make train):"
 	@echo "  make fairness MODEL=xgboost"
 	@echo "  make predict MODEL=xgboost ROW=3"
-	@echo ""
-	@echo "Override training knobs, e.g.:"
-	@echo "  make train FEATURE_SET=baseline"
-	@echo "  make train METRIC=f2 THRESHOLD_STRATEGY=f2 POS_WEIGHT=full"
 
 sync:
 	uv sync --extra dev
@@ -93,3 +107,15 @@ ifeq ($(strip $(CUSTOMER_ID)),)
 else
 	uv run python -m src.predict --model $(MODEL) --customer-id $(CUSTOMER_ID)
 endif
+
+package:
+	uv run python -m src.package package
+
+package-test: package
+	uv run python -m src.package smoke-test
+
+deploy: package
+	uv run python -m src.deploy $(DEPLOY_EXTRA)
+
+undeploy:
+	uv run python -m src.deploy --undeploy

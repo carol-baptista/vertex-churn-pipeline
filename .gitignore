@@ -17,6 +17,10 @@ data/
 *.csv
 *.parquet
 models/
+serving/churn-rf/v1/model.joblib
+serving/churn-rf/v1/threshold.json
+serving/churn-rf/v1/feature_schema.json
+serving/churn-rf/v1/manifest.json
 *.pkl
 *.joblib
 
