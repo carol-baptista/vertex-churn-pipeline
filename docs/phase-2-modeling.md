@@ -45,21 +45,67 @@ tuned tree candidates.
 
 ## Evaluation
 
-- **Split:** 80/20, stratified on `Churn`, `random_state=42`.
+### Data split (stratified 70 / 15 / 15)
+
+We use a **stratified** split: each subset keeps roughly the same churn rate (~27%)
+as the full dataset. Implementation: `train_test_split(..., stratify=y)` twice
+(once for test, once for validation from the remaining dev pool).
+
+**What “stratified” means:** sampling is controlled by the class label so every
+split mirrors the original class proportions instead of relying on pure randomness.
+
+**Why we do it:** telco churn is imbalanced (~27% positive). A random 15% test
+slice can easily end up with more or fewer churners by luck, which makes
+precision/recall unstable and comparisons between runs unreliable. Stratification
+is standard practice for imbalanced classification ([scikit-learn](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.train_test_split.html),
+[Machine Learning Mastery — stratified CV](https://machinelearningmastery.com/cross-validation-for-imbalanced-classification/)).
+
+| Split | Share | Used for |
+| --- | --- | --- |
+| **Train** | 70% | Model fitting + stratified CV hyperparameter search |
+| **Validation** | 15% | Threshold tuning only (never seen during training) |
+| **Test** | 15% | Final offline metrics (never seen during training or threshold tuning) |
+
+`random_state=42` for reproducibility.
+
+### Metrics reporting
+
+Each role has a different job; only **test** is the headline number for
+stakeholders or interviews ([MetricGate](https://metricgate.com/blogs/training-vs-validation-vs-test-set/),
+[Machine Learning Mastery — test vs validation](https://machinelearningmastery.com/difference-test-validation-datasets/)):
+
+| Phase | Role | Report externally? |
+| --- | --- | --- |
+| **CV on train** | Pick hyperparameters and winner model | No — model selection only |
+| **Validation** | Tune classification threshold | No — development only (slightly optimistic) |
+| **Test** | Unbiased generalization estimate | **Yes — lead with this** |
+
+`models/summary.json` encodes this:
+
+- Top-level `metrics_reporting` documents the workflow.
+- `full_feature_set.champion.report` — headline test metrics for the CV winner.
+- `full_feature_set.champion.development_only` — CV score + validation metrics.
+- Per-model entries use the same `report` / `development_only` nesting.
+
+**Interview framing:** “We tuned threshold on validation; test recall/precision/F1
+are the numbers I’d stand behind.”
+
+### Other evaluation settings
+
 - **Metric (grid + winner):** one `--metric` drives both hyperparameter tuning
   and winner selection (default `f1`).
-- **Threshold:** max F1 on out-of-fold train predictions by default
-  (`--threshold-strategy f1`). Use `recall_floor` only when you want to cap
-  false positives explicitly (e.g. `--threshold-strategy recall_floor --recall-floor 0.75`).
+- **Threshold:** max F1 on the **validation** set by default
+  (`--threshold-strategy f1`).
 - **Imbalance:** loss reweighting only (no oversampling); default `--pos-weight sqrt`.
-- **Feature set:** default `engineered` adds `avg_monthly_charge`, `tenure_bucket`,
-  `addon_count`, and `month_to_month_electronic`. Raw-only runs use
-  `--feature-set baseline`.
+- **Feature set:** default `baseline` (raw EDA features). Use
+  `--feature-set engineered` for interview/demo (+4 EDA-driven features).
+- **Explainability:** Random Forest exports Gini importances + **SHAP** summary
+  under `models/random_forest/shap/`.
 - **Baseline snapshot:** `make train-baseline` saves results under
   `experiments/baseline/summary.json`. Engineered runs include `baseline_comparison`
   when that file exists.
-- **Reported:** CV selection score, PR-AUC, ROC-AUC, precision, recall, F1,
-  confusion matrix.
+- **Also logged:** CV selection score, PR-AUC, ROC-AUC, precision, recall, F1,
+  confusion matrix (per split where applicable).
 - **Fairness:** after test scoring, join protected attributes back on `customerID`
   and slice metrics by group (e.g. gender) to check for disparate impact via
   proxy features. Protected columns are never model inputs.
@@ -69,14 +115,14 @@ Each run prints and saves a `run_config` block listing every knob used.
 ## How to run
 
 ```bash
-# full run with engineered features (default)
+# full run with baseline features (default)
 make train
 
-# freeze / refresh the raw-feature baseline for comparison
-make train-baseline
+# interview demo: engineered features + baseline comparison
+make train FEATURE_SET=engineered
 
-# train without engineered features (does not overwrite baseline unless --save-baseline)
-make train FEATURE_SET=baseline
+# freeze / refresh the raw-feature baseline snapshot
+make train-baseline
 
 # quick smoke run on fewer rows
 make train-smoke
@@ -95,12 +141,12 @@ CLI flags (defaults shown):
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
-| `--feature-set` | `engineered` | `baseline` (raw) or `engineered` (+4 EDA features) |
+| `--feature-set` | `baseline` | `baseline` (raw) or `engineered` (+4 EDA features) |
 | `--metric` | `f1` | Grid search **and** winner selection (same metric) |
 | `--grid-metric` | *(same as metric)* | Advanced override for grid search only |
 | `--select-metric` | *(same as metric)* | Advanced override for winner only |
 | `--pos-weight` | `sqrt` | Imbalance correction strength |
-| `--threshold-strategy` | `f1` | OOF threshold tuning (max F1) |
+| `--threshold-strategy` | `f1` | Threshold tuning on validation (max F1) |
 | `--recall-floor` | `0.75` | Min recall when using `recall_floor` strategy |
 
 Outputs:
@@ -109,10 +155,11 @@ Outputs:
 models/
   logreg/           model.joblib   metrics.json
   random_forest/    model.joblib   metrics.json   feature_importance.json   feature_importance.png
+                    shap/shap_summary.png   shap/shap_importance.json
   xgboost/          model.joblib   metrics.json
   lightgbm/         model.joblib   metrics.json
   probe_audit/      probe_audit.json   probe_audit.png   # with --probe-feature / make train-probe
-  summary.json      # comparison + winner by CV selection metric (default: F1)
+  summary.json      # comparison + champion test metrics + metrics_reporting guide
 ```
 
 ## Training decisions (experiments → defaults)
@@ -130,7 +177,7 @@ what we kept:
 **Chosen defaults** (plain `make train`):
 
 - **`--metric f1`** — same metric for grid search and winner selection
-- **`--threshold-strategy f1`** — max F1 on out-of-fold train predictions
+- **`--threshold-strategy f1`** — max F1 on the validation set
 - **`--pos-weight sqrt`** — gentler imbalance correction than `full`; keeps recall
   high (~78%) while lifting precision from ~42% to ~51%
 
@@ -157,8 +204,9 @@ check vs Month-to-month) absorb the split budget.
 
 ## Reviewer checklist (is this deployable?)
 
-- [ ] CV PR-AUC is stable across folds (low std) - not a lucky split.
-- [ ] Test metrics are in line with CV (no large train/test gap = no overfit).
+- [ ] CV metric is stable across folds (low std) — not a lucky split.
+- [ ] **Test** metrics are in line with CV (no large train/test gap = no overfit).
+- [ ] Validation metrics are close to test (threshold tuning did not overfit val).
 - [ ] Recall is high enough for the retention use case at an acceptable precision.
 - [ ] Confusion matrix false-negative count is acceptable (missed churners).
 - [ ] Fairness slices by gender are comparable (no disparate impact).
@@ -167,6 +215,5 @@ check vs Month-to-month) absorb the split budget.
 
 ## Deferred (future experiments)
 
-- Engineered features (`avg_charge`, `charge_increased`) - measure lift vs. this baseline.
-- Bucketing `tenure` / `MonthlyCharges` - CV ablation.
-- SHAP explanations + Vertex AI Model Registry upload.
+- Bucketing `tenure` / `MonthlyCharges` — CV ablation.
+- Vertex AI Model Registry upload.

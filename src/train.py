@@ -10,7 +10,7 @@ Trains four models on the *same* feature set:
 
 Tree models use ``scale_pos_weight`` / ``class_weight`` for imbalance. One metric
 (default **F1**) drives both grid search and winner selection. Threshold tuning
-uses the same metric by default (max F1 on OOF predictions).
+uses the same metric by default (max F1 on the held-out validation set).
 
 Run it:
 
@@ -65,7 +65,11 @@ logger = logging.getLogger(__name__)
 
 RANDOM_STATE = 42
 N_SPLITS = 5
-TEST_SIZE = 0.20
+VAL_SIZE = 0.15
+TEST_SIZE = 0.15
+# Remaining ~70% is used for training (+ in-fold CV for hyperparameters).
+SHAP_BACKGROUND_SIZE = 100
+SHAP_EXPLAIN_SIZE = 200
 MODELS_DIR = config.REPO_ROOT / "models"
 BASELINE_DIR = config.REPO_ROOT / "experiments" / "baseline"
 
@@ -74,7 +78,7 @@ DEFAULT_METRIC = "f1"
 DEFAULT_POS_WEIGHT_MODE = "sqrt"
 DEFAULT_THRESHOLD_STRATEGY = "f1"
 DEFAULT_RECALL_FLOOR = 0.75
-DEFAULT_FEATURE_SET = "engineered"
+DEFAULT_FEATURE_SET = "baseline"
 
 METRIC_CHOICES = ("pr_auc", "f1", "f2", "mcc")
 THRESHOLD_STRATEGIES = ("f1", "f2", "recall_floor")
@@ -137,6 +141,12 @@ def build_run_config(
         "pos_weight_value": round(pos_weight, 4),
         "threshold_strategy": threshold_strategy,
         "recall_floor": recall_floor,
+        "data_split": {
+            "train": round(1.0 - VAL_SIZE - TEST_SIZE, 2),
+            "validation": VAL_SIZE,
+            "test": TEST_SIZE,
+        },
+        "threshold_tuned_on": "validation",
     }
 
 
@@ -154,10 +164,24 @@ def save_baseline_snapshot(summary: dict) -> Path:
         "```bash\n"
         "make train-baseline\n"
         "```\n\n"
-        "Compare against the current default (`make train` uses engineered features).\n",
+        "Compare against engineered runs (`make train FEATURE_SET=engineered`).\n",
     )
     logger.info("Saved baseline snapshot to %s", path)
     return path
+
+
+def _test_metrics_from_summary_model(entry: dict) -> dict:
+    """Read headline test metrics from summary model entry (new or legacy shape)."""
+    if "report" in entry:
+        return entry["report"]
+    return {
+        "pr_auc": entry.get("test_pr_auc"),
+        "roc_auc": entry.get("test_roc_auc"),
+        "recall": entry.get("test_recall"),
+        "precision": entry.get("test_precision"),
+        "f1": entry.get("test_f1"),
+        "f2": entry.get("test_f2"),
+    }
 
 
 def compare_to_baseline(baseline: dict, current_results: dict[str, dict]) -> dict:
@@ -167,18 +191,19 @@ def compare_to_baseline(baseline: dict, current_results: dict[str, dict]) -> dic
     )
     comparison: dict[str, dict] = {}
     for name, current in current_results.items():
-        base = baseline_models.get(name, {})
+        base = _test_metrics_from_summary_model(baseline_models.get(name, {}))
+        test = current["test"]
         comparison[name] = {
-            "delta_test_pr_auc": round(current["pr_auc"] - base.get("test_pr_auc", 0), 4),
-            "delta_test_recall": round(current["recall"] - base.get("test_recall", 0), 4),
+            "delta_test_pr_auc": round(test["pr_auc"] - (base.get("pr_auc") or 0), 4),
+            "delta_test_recall": round(test["recall"] - (base.get("recall") or 0), 4),
             "delta_test_precision": round(
-                current["precision"] - base.get("test_precision", 0), 4
+                test["precision"] - (base.get("precision") or 0), 4
             ),
-            "delta_test_f1": round(current["f1"] - base.get("test_f1", 0), 4),
-            "baseline_test_recall": base.get("test_recall"),
-            "baseline_test_precision": base.get("test_precision"),
-            "current_test_recall": current["recall"],
-            "current_test_precision": current["precision"],
+            "delta_test_f1": round(test["f1"] - (base.get("f1") or 0), 4),
+            "baseline_test_recall": base.get("recall"),
+            "baseline_test_precision": base.get("precision"),
+            "current_test_recall": test["recall"],
+            "current_test_precision": test["precision"],
         }
     return comparison
 
@@ -188,6 +213,63 @@ def load_baseline_summary() -> dict | None:
     if not path.exists():
         return None
     return json.loads(path.read_text())
+
+
+def split_train_val_test(
+    X: pd.DataFrame,
+    y: pd.Series,
+    customer_id: pd.Series,
+    *,
+    val_size: float = VAL_SIZE,
+    test_size: float = TEST_SIZE,
+    random_state: int = RANDOM_STATE,
+) -> tuple[
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.Series,
+    pd.Series,
+    pd.Series,
+    pd.Series,
+    pd.Series,
+    pd.Series,
+]:
+    """Stratified 70/15/15 split: train / validation / test.
+
+    - **Train:** model fitting + cross-validation for hyperparameters.
+    - **Validation:** threshold tuning (never seen during training).
+    - **Test:** final offline metrics (never seen during training or threshold tuning).
+    """
+    X_dev, X_test, y_dev, y_test, id_dev, id_test = train_test_split(
+        X,
+        y,
+        customer_id,
+        test_size=test_size,
+        stratify=y,
+        random_state=random_state,
+    )
+    val_frac = val_size / (1.0 - test_size)
+    X_train, X_val, y_train, y_val, id_train, id_val = train_test_split(
+        X_dev,
+        y_dev,
+        id_dev,
+        test_size=val_frac,
+        stratify=y_dev,
+        random_state=random_state,
+    )
+    return X_train, X_val, X_test, y_train, y_val, y_test, id_train, id_val, id_test
+
+
+def _encoded_matrix(pipe: Pipeline, X: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Transform raw features through the fitted pipeline prep (+ optional select)."""
+    prep = pipe.named_steps["prep"]
+    if "select" in pipe.named_steps:
+        matrix = pipe.named_steps["select"].transform(prep.transform(X))
+        names = pipe.named_steps["select"].get_feature_names_out()
+    else:
+        matrix = prep.transform(X)
+        names = prep.get_feature_names_out()
+    return np.asarray(matrix), np.asarray(names, dtype=object)
 
 
 def resolve_training_metrics(
@@ -566,24 +648,91 @@ def probe_kept_features(audit: dict) -> list[str]:
     ]
 
 
+METRICS_REPORTING = {
+    "headline": "test",
+    "development_only": ["cross_validation", "validation"],
+    "workflow": {
+        "train": "Fit models; stratified CV on train for hyperparameters and winner selection.",
+        "validation": "Tune classification threshold (never seen during training).",
+        "test": "Single unbiased generalization estimate — quote this externally.",
+    },
+    "split": {
+        "method": "stratified",
+        "ratios": {"train": 0.7, "validation": 0.15, "test": 0.15},
+        "why_stratified": (
+            "Preserve ~27% churn rate in every split so precision/recall on small "
+            "holdouts stay representative (standard practice for imbalanced classification)."
+        ),
+    },
+}
+
+
 def _metrics_block(results: dict[str, dict], *, metric: str) -> dict:
     block: dict[str, dict] = {}
     cv_key = f"cv_{metric}"
     for k, v in results.items():
-        entry = {
+        val = v["validation"]
+        test = v["test"]
+        development: dict = {
             cv_key: v["cv_score"],
-            "test_pr_auc": v["pr_auc"],
-            "test_roc_auc": v["roc_auc"],
-            "test_recall": v["recall"],
-            "test_precision": v["precision"],
-            "test_f1": v["f1"],
-            "test_f2": v["f2"],
-            "threshold": v["threshold"],
+            "validation": {
+                "pr_auc": val["pr_auc"],
+                "recall": val["recall"],
+                "precision": val["precision"],
+                "f1": val["f1"],
+                "f2": val["f2"],
+            },
         }
         if "cv_grid_score" in v:
-            entry[f"{cv_key}_grid"] = v["cv_grid_score"]
-        block[k] = entry
+            development[f"{cv_key}_grid"] = v["cv_grid_score"]
+        block[k] = {
+            "development_only": development,
+            "report": {
+                "pr_auc": test["pr_auc"],
+                "roc_auc": test["roc_auc"],
+                "recall": test["recall"],
+                "precision": test["precision"],
+                "f1": test["f1"],
+                "f2": test["f2"],
+            },
+            "threshold": v["threshold"],
+        }
     return block
+
+
+def _champion_block(results: dict[str, dict], winner: str, *, metric: str) -> dict:
+    """Headline metrics for the CV-selected winner (test) plus development context."""
+    w = results[winner]
+    val = w["validation"]
+    test = w["test"]
+    cv_key = f"cv_{metric}"
+    development: dict = {
+        cv_key: w["cv_score"],
+        "validation": {
+            "pr_auc": val["pr_auc"],
+            "recall": val["recall"],
+            "precision": val["precision"],
+            "f1": val["f1"],
+            "f2": val["f2"],
+        },
+    }
+    if "cv_grid_score" in w:
+        development[f"{cv_key}_grid"] = w["cv_grid_score"]
+    return {
+        "model": winner,
+        "selected_by": f"{cv_key} on train (stratified CV)",
+        "threshold_tuned_on": "validation",
+        "report": {
+            "pr_auc": test["pr_auc"],
+            "roc_auc": test["roc_auc"],
+            "recall": test["recall"],
+            "precision": test["precision"],
+            "f1": test["f1"],
+            "f2": test["f2"],
+        },
+        "development_only": development,
+        "threshold": w["threshold"],
+    }
 
 
 def _winner(results: dict[str, dict]) -> str:
@@ -599,11 +748,13 @@ def _compare_feature_sets(
         slim = slim_results[name]
         comparison[name] = {
             "delta_cv_score": round(slim["cv_score"] - full["cv_score"], 4),
-            "delta_test_pr_auc": round(slim["pr_auc"] - full["pr_auc"], 4),
-            "delta_test_recall": round(slim["recall"] - full["recall"], 4),
-            "delta_test_precision": round(slim["precision"] - full["precision"], 4),
-            "full_test_pr_auc": full["pr_auc"],
-            "slim_test_pr_auc": slim["pr_auc"],
+            "delta_test_pr_auc": round(slim["test"]["pr_auc"] - full["test"]["pr_auc"], 4),
+            "delta_test_recall": round(slim["test"]["recall"] - full["test"]["recall"], 4),
+            "delta_test_precision": round(
+                slim["test"]["precision"] - full["test"]["precision"], 4
+            ),
+            "full_test_pr_auc": full["test"]["pr_auc"],
+            "slim_test_pr_auc": slim["test"]["pr_auc"],
         }
     return comparison
 
@@ -636,6 +787,8 @@ def train_one(
     pipe: Pipeline,
     X_train: pd.DataFrame,
     y_train: pd.Series,
+    X_val: pd.DataFrame,
+    y_val: pd.Series,
     X_test: pd.DataFrame,
     y_test: pd.Series,
     customer_id_test: pd.Series,
@@ -650,7 +803,7 @@ def train_one(
     threshold_strategy: str,
     recall_floor: float,
 ) -> tuple[Pipeline, dict]:
-    """Fit (optionally tune) one model and evaluate it on the held-out test set."""
+    """Fit (optionally tune) one model; tune threshold on val; report val + test."""
     logger.info("=== %s ===", name)
 
     grid_cv_score: float | None = None
@@ -682,26 +835,30 @@ def train_one(
         select_scores.std(),
     )
 
-    oof_proba = cross_val_predict(
-        pipe, X_train, y_train, cv=cv, method="predict_proba", n_jobs=-1
-    )[:, 1]
+    val_proba = pipe.predict_proba(X_val)[:, 1]
     threshold = best_threshold(
-        y_train.to_numpy(),
-        oof_proba,
+        y_val.to_numpy(),
+        val_proba,
         strategy=threshold_strategy,
         recall_floor=recall_floor,
     )
     logger.info(
-        "Tuned threshold (%s, recall_floor=%.2f): %.3f",
+        "Tuned threshold on validation (%s, recall_floor=%.2f): %.3f",
         threshold_strategy,
         recall_floor,
         threshold,
     )
 
+    validation = evaluate(y_val.to_numpy(), val_proba, threshold)
     test_proba = pipe.predict_proba(X_test)[:, 1]
-    metrics = evaluate(y_test.to_numpy(), test_proba, threshold)
-    metrics["cv_score"] = select_cv_score
-    metrics["select_metric"] = select_metric
+    test = evaluate(y_test.to_numpy(), test_proba, threshold)
+    metrics = {
+        "threshold": threshold,
+        "cv_score": select_cv_score,
+        "select_metric": select_metric,
+        "validation": validation,
+        "test": test,
+    }
     if grid_cv_score is not None:
         metrics["cv_grid_score"] = grid_cv_score
     metrics["fairness_by_gender"] = fairness_audit(
@@ -709,13 +866,20 @@ def train_one(
     )
 
     logger.info(
+        "VAL   pr_auc=%.4f precision=%.3f recall=%.3f f1=%.3f",
+        validation["pr_auc"],
+        validation["precision"],
+        validation["recall"],
+        validation["f1"],
+    )
+    logger.info(
         "TEST  pr_auc=%.4f roc_auc=%.4f precision=%.3f recall=%.3f f1=%.3f f2=%.3f",
-        metrics["pr_auc"],
-        metrics["roc_auc"],
-        metrics["precision"],
-        metrics["recall"],
-        metrics["f1"],
-        metrics["f2"],
+        test["pr_auc"],
+        test["roc_auc"],
+        test["precision"],
+        test["recall"],
+        test["f1"],
+        test["f2"],
     )
     return pipe, metrics
 
@@ -894,6 +1058,71 @@ def save_rf_feature_importance(pipe: Pipeline, out_dir: Path, top_n: int = 20) -
     logger.info("Saved Random Forest feature importances to %s", out_dir)
 
 
+def save_shap_analysis(
+    pipe: Pipeline,
+    X_train: pd.DataFrame,
+    X_explain: pd.DataFrame,
+    out_dir: Path,
+    *,
+    max_background: int = SHAP_BACKGROUND_SIZE,
+    max_explain: int = SHAP_EXPLAIN_SIZE,
+    top_n: int = 20,
+) -> None:
+    """Persist SHAP summary plot and mean |SHAP| rankings for a tree model pipeline."""
+    import shap
+
+    model = pipe.named_steps["model"]
+    if not hasattr(model, "feature_importances_"):
+        logger.info("Skipping SHAP for non-tree model")
+        return
+
+    shap_dir = out_dir / "shap"
+    shap_dir.mkdir(parents=True, exist_ok=True)
+
+    rng = np.random.default_rng(RANDOM_STATE)
+    bg_idx = rng.choice(len(X_train), size=min(max_background, len(X_train)), replace=False)
+    ex_idx = rng.choice(len(X_explain), size=min(max_explain, len(X_explain)), replace=False)
+    X_background, feature_names = _encoded_matrix(pipe, X_train.iloc[bg_idx])
+    X_sample, _ = _encoded_matrix(pipe, X_explain.iloc[ex_idx])
+
+    explainer = shap.TreeExplainer(
+        model,
+        data=X_background,
+        feature_perturbation="interventional",
+    )
+    shap_values = explainer.shap_values(X_sample, check_additivity=False)
+    if isinstance(shap_values, list):
+        shap_values = shap_values[1]
+    shap_values = np.asarray(shap_values)
+    if shap_values.ndim == 3:
+        shap_values = shap_values[:, :, 1]
+
+    mean_abs = np.abs(shap_values).mean(axis=0).ravel()
+    ranked = sorted(
+        zip(feature_names.tolist(), mean_abs.tolist()),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    (shap_dir / "shap_importance.json").write_text(
+        json.dumps(
+            [{"feature": f, "mean_abs_shap": float(v)} for f, v in ranked],
+            indent=2,
+        )
+    )
+
+    shap.summary_plot(
+        shap_values,
+        X_sample,
+        feature_names=feature_names.tolist(),
+        show=False,
+        max_display=top_n,
+    )
+    plt.tight_layout()
+    plt.savefig(shap_dir / "shap_summary.png", dpi=120, bbox_inches="tight")
+    plt.close()
+    logger.info("Saved SHAP analysis to %s", shap_dir)
+
+
 # --------------------------------------------------------------------------- #
 # Persistence
 # --------------------------------------------------------------------------- #
@@ -914,6 +1143,8 @@ def train_model_suite(
     subdir: str,
     X_train: pd.DataFrame,
     y_train: pd.Series,
+    X_val: pd.DataFrame,
+    y_val: pd.Series,
     X_test: pd.DataFrame,
     y_test: pd.Series,
     customer_id_test: pd.Series,
@@ -925,6 +1156,7 @@ def train_model_suite(
     select_metric: str,
     threshold_strategy: str,
     recall_floor: float,
+    run_shap: bool = True,
 ) -> dict[str, dict]:
     """Train and persist all models for one feature set."""
     logger.info("=== Feature set: %s (%s) ===", label, subdir or "full")
@@ -935,6 +1167,8 @@ def train_model_suite(
             pipe,
             X_train,
             y_train,
+            X_val,
+            y_val,
             X_test,
             y_test,
             customer_id_test,
@@ -955,6 +1189,8 @@ def train_model_suite(
         out_dir = save_artifacts(name, fitted_pipe, metrics, subdir=subdir)
         if name == "random_forest":
             save_rf_feature_importance(fitted_pipe, out_dir)
+            if run_shap:
+                save_shap_analysis(fitted_pipe, X_train, X_val, out_dir)
         results[name] = metrics
     return results
 
@@ -975,6 +1211,7 @@ def main(
     recall_floor: float = DEFAULT_RECALL_FLOOR,
     feature_set: str = DEFAULT_FEATURE_SET,
     save_baseline: bool = False,
+    run_shap: bool = True,
 ) -> dict:
     """Run training + model comparison and persist artifacts."""
     logging.basicConfig(
@@ -1007,14 +1244,23 @@ def main(
         feature_set,
     )
 
-    # Stratified split; carry customer_id alongside for post-scoring fairness joins.
-    X_train, X_test, y_train, y_test, _, customer_id_test = train_test_split(
-        ds.X,
-        ds.y,
-        ds.customer_id,
-        test_size=TEST_SIZE,
-        stratify=ds.y,
-        random_state=RANDOM_STATE,
+    # Stratified 70/15/15 split; test is never used for training or threshold tuning.
+    (
+        X_train,
+        X_val,
+        X_test,
+        y_train,
+        y_val,
+        y_test,
+        _,
+        _,
+        customer_id_test,
+    ) = split_train_val_test(ds.X, ds.y, ds.customer_id)
+    logger.info(
+        "Split sizes: train=%d val=%d test=%d",
+        len(X_train),
+        len(X_val),
+        len(X_test),
     )
 
     cv = StratifiedKFold(n_splits=N_SPLITS, shuffle=True, random_state=RANDOM_STATE)
@@ -1065,6 +1311,8 @@ def main(
         subdir="",
         X_train=X_train,
         y_train=y_train,
+        X_val=X_val,
+        y_val=y_val,
         X_test=X_test,
         y_test=y_test,
         customer_id_test=customer_id_test,
@@ -1076,6 +1324,7 @@ def main(
         select_metric=select_metric,
         threshold_strategy=threshold_strategy,
         recall_floor=recall_floor,
+        run_shap=run_shap,
     )
 
     slim_results: dict[str, dict] | None = None
@@ -1092,6 +1341,8 @@ def main(
             subdir="probe_selected",
             X_train=X_train,
             y_train=y_train,
+            X_val=X_val,
+            y_val=y_val,
             X_test=X_test,
             y_test=y_test,
             customer_id_test=customer_id_test,
@@ -1105,13 +1356,16 @@ def main(
             recall_floor=recall_floor,
         )
 
+    winner = _winner(full_results)
     summary: dict = {
         "run_config": run_config,
+        "metrics_reporting": METRICS_REPORTING,
         "metric": metric,
         "feature_set": feature_set,
         "full_feature_set": {
             "n_raw_features": int(ds.X.shape[1]),
-            "winner": _winner(full_results),
+            "winner": winner,
+            "champion": _champion_block(full_results, winner, metric=metric),
             "models": _metrics_block(full_results, metric=metric),
         },
         "probe_audit": probe_audit or probe_train,
@@ -1134,8 +1388,8 @@ def main(
         summary["feature_set_comparison"] = _compare_feature_sets(
             full_results, slim_results
         )
-        best_full = max(full_results.values(), key=lambda m: m["pr_auc"])["pr_auc"]
-        best_slim = max(slim_results.values(), key=lambda m: m["pr_auc"])["pr_auc"]
+        best_full = max(full_results.values(), key=lambda m: m["test"]["pr_auc"])["test"]["pr_auc"]
+        best_slim = max(slim_results.values(), key=lambda m: m["test"]["pr_auc"])["test"]["pr_auc"]
         summary["recommendation"] = (
             "probe_selected"
             if best_slim >= best_full
@@ -1151,7 +1405,8 @@ def main(
         save_baseline_snapshot(summary)
 
     # Back-compat keys used by earlier runs.
-    summary["winner"] = summary["full_feature_set"]["winner"]
+    summary["winner"] = winner
+    summary["champion"] = summary["full_feature_set"]["champion"]
     summary["models"] = summary["full_feature_set"]["models"]
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
@@ -1195,6 +1450,11 @@ def _parse_args() -> argparse.Namespace:
         "--probe-train",
         action="store_true",
         help="train on probe-selected features and compare against the full feature set",
+    )
+    parser.add_argument(
+        "--no-shap",
+        action="store_true",
+        help="skip SHAP explainability plots for Random Forest",
     )
     parser.add_argument(
         "--feature-set",
@@ -1277,4 +1537,5 @@ if __name__ == "__main__":
         recall_floor=args.recall_floor,
         feature_set=args.feature_set,
         save_baseline=args.save_baseline,
+        run_shap=not args.no_shap,
     )

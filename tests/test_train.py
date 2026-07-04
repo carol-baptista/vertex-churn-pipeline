@@ -8,6 +8,9 @@ from sklearn.metrics import precision_score, recall_score
 
 from src.preprocess import make_dataset
 from src.train import (
+    METRICS_REPORTING,
+    _metrics_block,
+    _test_metrics_from_summary_model,
     best_threshold,
     build_random_forest,
     evaluate,
@@ -102,6 +105,66 @@ def test_resolve_training_metrics_defaults_to_single_metric():
     grid, select = resolve_training_metrics("f2", None, None)
     assert grid == "f2"
     assert select == "f2"
+
+
+def test_split_train_val_test_sizes():
+    from src.train import split_train_val_test
+
+    X = pd.DataFrame({"a": range(1000)})
+    y = pd.Series([0, 1] * 500)
+    ids = pd.Series([f"c{i}" for i in range(1000)])
+
+    X_train, X_val, X_test, y_train, y_val, y_test, _, _, _ = split_train_val_test(
+        X, y, ids
+    )
+
+    assert len(X_train) + len(X_val) + len(X_test) == 1000
+    assert abs(len(X_test) / 1000 - 0.15) < 0.02
+    assert abs(len(X_val) / 1000 - 0.15) < 0.02
+
+
+def test_metrics_block_separates_report_from_development():
+    results = {
+        "logreg": {
+            "cv_score": 0.61,
+            "validation": {
+                "pr_auc": 0.68,
+                "recall": 0.75,
+                "precision": 0.54,
+                "f1": 0.63,
+                "f2": 0.70,
+            },
+            "test": {
+                "pr_auc": 0.66,
+                "roc_auc": 0.83,
+                "recall": 0.72,
+                "precision": 0.53,
+                "f1": 0.61,
+                "f2": 0.67,
+            },
+            "threshold": 0.42,
+        }
+    }
+    block = _metrics_block(results, metric="f1")
+    entry = block["logreg"]
+
+    assert entry["report"]["recall"] == 0.72
+    assert entry["development_only"]["validation"]["recall"] == 0.75
+    assert entry["development_only"]["cv_f1"] == 0.61
+    assert METRICS_REPORTING["headline"] == "test"
+
+
+def test_test_metrics_from_summary_model_supports_legacy_flat_keys():
+    legacy = {
+        "test_recall": 0.71,
+        "test_precision": 0.55,
+        "test_f1": 0.62,
+        "test_pr_auc": 0.68,
+    }
+    nested = {"report": {"recall": 0.72, "precision": 0.54, "f1": 0.63, "pr_auc": 0.67}}
+
+    assert _test_metrics_from_summary_model(legacy)["recall"] == 0.71
+    assert _test_metrics_from_summary_model(nested)["recall"] == 0.72
 
 
 def test_best_threshold_recall_floor_targets_precision_at_min_recall():

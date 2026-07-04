@@ -14,7 +14,7 @@ METRIC ?= f1
 POS_WEIGHT ?= sqrt
 THRESHOLD_STRATEGY ?= f1
 RECALL_FLOOR ?= 0.75
-FEATURE_SET ?= engineered
+FEATURE_SET ?= baseline
 
 COMMON_TRAIN_ARGS = \
 	--metric $(METRIC) \
@@ -36,7 +36,8 @@ help:
 	@echo "  make test ARGS='...'   Extra pytest flags, e.g. -k tenure_zero -v"
 	@echo ""
 	@echo "Training (defaults: feature_set=$(FEATURE_SET), metric=$(METRIC), pos=$(POS_WEIGHT), threshold=$(THRESHOLD_STRATEGY)):"
-	@echo "  make train             Full train with engineered features (default)"
+	@echo "  make train             Full train with baseline features (default)"
+	@echo "  make train FEATURE_SET=engineered  Demo engineered features for interviews"
 	@echo "  make train-baseline    Train raw features + save experiments/baseline/"
 	@echo "  make train-smoke       Quick run on 2000 rows, no tuning"
 	@echo "  make train-fast        Full data, skip tree-model grid searches"
