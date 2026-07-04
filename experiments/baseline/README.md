@@ -9,4 +9,4 @@ Regenerate with:
 make train-baseline
 ```
 
-Compare against the current default (`make train` uses engineered features).
+Compare against engineered runs (`make train FEATURE_SET=engineered`).
