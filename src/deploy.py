@@ -117,6 +117,8 @@ def register_model(*, artifact_uri: str, serving_image: str) -> aiplatform.Model
         display_name=MODEL_DISPLAY_NAME,
         artifact_uri=artifact_uri,
         serving_container_image_uri=serving_image,
+        serving_container_predict_route="/predict",
+        serving_container_health_route="/health",
         labels={
             "feature_set": "baseline",
             "model": model_name.replace("_", "-"),

@@ -101,6 +101,8 @@ Uploaded to `gs://{GCS_BUCKET}/models/churn-rf/v1/`.
 
 Vertex builds the Docker image from your `predictor.py` — you don't write a Flask app.
 
+Registration sets `predictRoute=/predict` and `healthRoute=/health` on the CPR container (required for batch prediction jobs).
+
 ## Request / response
 
 **Request** (no `customerID`, `gender`, or `Churn`):

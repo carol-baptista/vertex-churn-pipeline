@@ -66,7 +66,12 @@ customers_scoring (BQ)
   → load JSONL output → churn_ml.predictions
 ```
 
-**Note:** If you updated the CPR predictor (e.g. `customerID` passthrough), re-run `make deploy REGISTER_ONLY=1` so Registry uses the new image.
+**Note:** CPR models need `/predict` and `/health` routes on upload for batch prediction. If `make score-vertex` fails with a PredictRoute/HealthRoute error, re-register:
+
+```bash
+make deploy REGISTER_ONLY=1
+make score-vertex
+```
 
 ## Local vs Vertex scoring
 

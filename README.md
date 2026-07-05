@@ -2,17 +2,121 @@
 
 Churn prediction portfolio project on **Google Cloud**: BigQuery → training → **Vertex AI Model Registry** → endpoint deployment.
 
-Designed to demonstrate end-to-end ML on GCP, including model versioning and gated promotion (later phases).
+Designed to demonstrate end-to-end ML on GCP: train locally, register the champion in Vertex, batch-score into BigQuery for analytics.
 
-## Architecture (target)
+## Pipelines at a glance
+
+Two flows share the same **preprocessing logic** (`src/preprocess.py`) but differ after the model is fit: training writes artifacts to disk; scoring reads a BQ population and writes predictions back to BQ.
+
+### Training pipeline
+
+Historical data with labels → fit models → save artifacts + metrics.
+
+```mermaid
+flowchart LR
+  subgraph ingest["Phase 1 — Data"]
+    CSV["GCS CSV\ntelco-customer-churn.csv"]
+    BQc["BigQuery\nchurn_ml.customers\n(+ Churn label)"]
+    CSV -->|"load_to_bq.sh"| BQc
+  end
+
+  subgraph train["Phase 2 — make train"]
+    Load["data.load_customers()"]
+    Clean["preprocess.clean()\nTotalCharges, dtypes"]
+    Split["make_dataset()\n18 baseline features\n+ customerID join key"]
+    Hold["Stratified split\n70% train / 15% val / 15% test"]
+    Prep["build_preprocessor()\nOHE + optional scale"]
+    Fit["sklearn Pipeline\nLogReg · RF · XGB · LGBM"]
+    Tune["CV on train\nthreshold on val"]
+    Test["Test metrics\n+ fairness_by_gender"]
+    Art["models/{model}/\nmodel.joblib\nmetrics.json"]
+    BQc --> Load --> Clean --> Split --> Hold --> Prep --> Fit --> Tune --> Test --> Art
+  end
+```
+
+**Commands:** `./scripts/load_to_bq.sh` → `make train` → `make fairness`
+
+**Outputs:** `models/random_forest/model.joblib` (champion), `metrics.json` (threshold ~0.441, test F1/PR-AUC, fairness slices). Threshold is stored **outside** the sklearn pipeline and applied at scoring time.
+
+Details: [docs/phase-2-modeling.md](docs/phase-2-modeling.md)
+
+### Batch scoring pipeline
+
+Live-like population **without labels** → score → append predictions to BigQuery.
+
+```mermaid
+flowchart LR
+  subgraph seed["Seed scoring population"]
+    BQfull["churn_ml.customers\n(full snapshot)"]
+    BQscore["churn_ml.customers_scoring\nno Churn label\n+ as_of_date"]
+    BQfull -->|"make seed-scoring\nrandom sample"| BQscore
+  end
+
+  subgraph prep["Shared preprocessing"]
+    Read["load_scoring_frame()"]
+    Clean2["preprocess.clean()\n18 raw feature cols"]
+    Read --> Clean2
+    BQscore --> Read
+  end
+
+  subgraph paths["Scoring path"]
+    Local["make score-local\nlocal model.joblib"]
+    Vertex["make score-vertex\nVertex BatchPredictionJob"]
+    Clean2 --> Local
+    Clean2 --> Vertex
+  end
+
+  subgraph infer["Inference"]
+    Proba["predict_proba → threshold\nchurn_probability + churn_flag"]
+    Local --> Proba
+    GCSin["GCS input JSONL\n+customerID passthrough"]
+    CPR["CPR container\n/predict"]
+    GCSout["GCS output JSONL"]
+    Vertex --> GCSin --> CPR --> GCSout --> Proba
+  end
+
+  subgraph out["Phase 4 — Predictions table"]
+    Pred["churn_ml.predictions\npartitioned by scored_at\nrun_id · model_version"]
+    Proba -->|"write_predictions()"| Pred
+  end
+```
+
+**Commands:**
+
+```bash
+make seed-scoring          # create customers_scoring (simulated live feed)
+make score-local           # score with local artifact → BQ (free)
+make score-vertex          # score via registered model → BQ (batch job cost)
+```
+
+**Who reads what:** analysts and retention workflows query **`predictions`** in BigQuery — not Vertex. Registry only holds the model version used to score.
+
+Details: [docs/phase-4-batch.md](docs/phase-4-batch.md)
+
+### Model registration (between train and Vertex scoring)
+
+```mermaid
+flowchart LR
+  Art["models/random_forest/\nmodel.joblib"]
+  Pkg["make package\nserving/churn-rf/v1/"]
+  GCS["GCS artifacts\n+ CPR Docker image"]
+  Reg["Vertex Model Registry\nchurn-predictor"]
+  Art --> Pkg --> GCS -->|"make deploy REGISTER_ONLY=1"| Reg
+  Reg -->|"make score-vertex"| Batch["BatchPredictionJob"]
+```
+
+Details: [docs/phase-3-deploy.md](docs/phase-3-deploy.md)
+
+## Architecture (summary)
 
 ```text
-BigQuery (features + labels)
-    → train (local or Vertex)
-    → Model Registry (v1, v2, …)
-    → Vertex Endpoint (deploy / undeploy for demos)
-    → prediction log (BigQuery, later)
+GCS CSV → BigQuery customers
+       → train → models/ (local artifacts)
+       → package + register → Vertex Model Registry
+       → batch score → BigQuery predictions  ← analytics / production consumers
 ```
+
+Optional: `make deploy` (without `REGISTER_ONLY`) attaches the model to an **online endpoint** for real-time demos; weekly batch scoring does not require a running endpoint.
 
 ## Cost note
 
@@ -107,6 +211,7 @@ The pipeline code lives in a flat `src/` package (~9 modules). That matches the 
 | `inspect.py` | Print saved fairness slices from `metrics.json` (`make fairness`) |
 | `package.py` | Build `serving/churn-rf/v1/` CPR bundle |
 | `deploy.py` | Upload bundle to GCS, register in Vertex, deploy endpoint |
+| `batch.py` | Seed `customers_scoring`, score to `predictions` (local or Vertex batch) |
 
 Boundaries that matter more than folder depth:
 
