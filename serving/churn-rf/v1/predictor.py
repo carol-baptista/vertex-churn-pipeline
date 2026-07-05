@@ -28,6 +28,7 @@ class ChurnPredictor(Predictor):
         with Path("feature_schema.json").open(encoding="utf-8") as f:
             schema = json.load(f)
         self._feature_columns: list[str] = list(schema["feature_columns"])
+        self._pass_through_ids: list[str] | None = None
 
     def preprocess(self, prediction_input: dict) -> pd.DataFrame:
         instances = prediction_input.get("instances")
@@ -37,6 +38,10 @@ class ChurnPredictor(Predictor):
         missing = set(self._feature_columns) - set(frame.columns)
         if missing:
             raise ValueError(f"Missing feature columns: {sorted(missing)}")
+        if "customerID" in frame.columns:
+            self._pass_through_ids = frame["customerID"].astype(str).tolist()
+        else:
+            self._pass_through_ids = None
         return frame[self._feature_columns]
 
     def predict(self, instances: pd.DataFrame) -> np.ndarray:
@@ -44,13 +49,14 @@ class ChurnPredictor(Predictor):
 
     def postprocess(self, prediction_results: np.ndarray) -> dict[str, Any]:
         predictions = []
-        for proba in prediction_results:
+        for i, proba in enumerate(prediction_results):
             p = float(proba)
-            predictions.append(
-                {
-                    "churn_probability": p,
-                    "churn_flag": int(p >= self._threshold),
-                    "threshold": self._threshold,
-                }
-            )
+            row: dict[str, Any] = {
+                "churn_probability": p,
+                "churn_flag": int(p >= self._threshold),
+                "threshold": self._threshold,
+            }
+            if self._pass_through_ids is not None:
+                row["customerID"] = self._pass_through_ids[i]
+            predictions.append(row)
         return {"predictions": predictions}

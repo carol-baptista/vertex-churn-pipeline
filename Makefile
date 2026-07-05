@@ -16,6 +16,7 @@ FEATURE_SET ?= baseline
 MODEL ?= random_forest
 ROW ?= 0
 CUSTOMER_ID ?=
+LIMIT ?= 500
 
 # Phase 3 deploy flags
 DRY_RUN ?= 0
@@ -39,7 +40,7 @@ ifeq ($(REGISTER_ONLY),1)
 DEPLOY_EXTRA += --register-only
 endif
 
-.PHONY: help sync test train train-baseline train-smoke train-fast train-probe train-probe-compare fairness predict package package-test deploy undeploy
+.PHONY: help sync test train train-baseline train-smoke train-fast train-probe train-probe-compare fairness predict package package-test deploy undeploy seed-scoring score-local score-vertex
 
 help:
 	@echo "Targets:"
@@ -62,6 +63,11 @@ help:
 	@echo "  make deploy            Upload GCS + CPR image + Registry + Endpoint"
 	@echo "  make deploy REGISTER_ONLY=1  Register model, skip endpoint"
 	@echo "  make undeploy          Stop endpoint billing"
+	@echo ""
+	@echo "Phase 4 batch scoring (BQ predictions table):"
+	@echo "  make seed-scoring      Sample customers_scoring (LIMIT=$(LIMIT), no Churn label)"
+	@echo "  make score-local       Score with local model -> churn_ml.predictions"
+	@echo "  make score-vertex      Score via Vertex BatchPredictionJob -> predictions"
 	@echo ""
 	@echo "Training options (feature_set=$(FEATURE_SET), metric=$(METRIC), pos=$(POS_WEIGHT)):"
 	@echo "  make train FEATURE_SET=engineered  Demo engineered features for interviews"
@@ -119,3 +125,12 @@ deploy: package
 
 undeploy:
 	uv run python -m src.deploy --undeploy
+
+seed-scoring:
+	uv run python -m src.batch seed --limit $(LIMIT)
+
+score-local:
+	uv run python -m src.batch score-local
+
+score-vertex:
+	uv run python -m src.batch score-vertex

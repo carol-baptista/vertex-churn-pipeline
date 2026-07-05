@@ -1,0 +1,27 @@
+-- Predictions written by `make score-local` / `make score-vertex`.
+-- Table is created automatically; this file documents the schema.
+
+-- SELECT
+--   customerID,
+--   churn_probability,
+--   churn_flag,
+--   threshold,
+--   model,
+--   model_version,
+--   run_id,
+--   source_table,
+--   scored_at
+-- FROM `churn-predictor-ml-2026.churn_ml.predictions`
+-- WHERE run_id = '...'
+-- ORDER BY churn_probability DESC
+-- LIMIT 20;
+
+-- Weekly monitoring example:
+-- SELECT
+--   DATE(scored_at) AS score_date,
+--   COUNT(*) AS n,
+--   AVG(churn_probability) AS avg_proba,
+--   AVG(churn_flag) AS flag_rate
+-- FROM `churn-predictor-ml-2026.churn_ml.predictions`
+-- GROUP BY 1
+-- ORDER BY 1 DESC;

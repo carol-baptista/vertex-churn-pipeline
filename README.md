@@ -69,8 +69,8 @@ Full walkthrough: **[docs/phase-0-setup.md](docs/phase-0-setup.md)**
 | 0 | **Done** | GCP project, APIs, bucket, BQ dataset, local env |
 | 1 | **In progress** | Load Telco churn data into BigQuery |
 | 2 | **Done** | EDA, train & evaluate locally |
-| 3 | **In progress** | Register RF champion + deploy to Vertex endpoint — see [docs/phase-3-deploy.md](docs/phase-3-deploy.md) |
-| 4 | Planned | Second version + gated pipeline; log predictions with `customerID` for ongoing monitoring |
+| 3 | **Done** | Register RF champion in Vertex Model Registry — see [docs/phase-3-deploy.md](docs/phase-3-deploy.md) |
+| 4 | **In progress** | Batch score to BigQuery (`customers_scoring` → `predictions`) — see [docs/phase-4-batch.md](docs/phase-4-batch.md) |
 
 See [docs/phase-1-data.md](docs/phase-1-data.md) for the data loading walkthrough.
 
