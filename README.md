@@ -189,7 +189,7 @@ Vertex AI is **not** always-free. This project is built to stay cheap:
 
 New GCP accounts get **$300 credit for 90 days**. See [docs/phase-0-setup.md](docs/phase-0-setup.md) for details.
 
-## Phase 0 — Setup
+## Setup
 
 ### Prerequisites
 
