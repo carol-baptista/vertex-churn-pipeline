@@ -68,8 +68,8 @@ Full walkthrough: **[docs/phase-0-setup.md](docs/phase-0-setup.md)**
 |-------|--------|-------------|
 | 0 | **Done** | GCP project, APIs, bucket, BQ dataset, local env |
 | 1 | **In progress** | Load Telco churn data into BigQuery |
-| 2 | **In progress** | EDA, train & evaluate locally |
-| 3 | Planned | Register model + deploy to Vertex endpoint; **post-training eval** joins predictions to source table on `customerID` for fairness / drift slices |
+| 2 | **Done** | EDA, train & evaluate locally |
+| 3 | **In progress** | Register RF champion + deploy to Vertex endpoint — see [docs/phase-3-deploy.md](docs/phase-3-deploy.md) |
 | 4 | Planned | Second version + gated pipeline; log predictions with `customerID` for ongoing monitoring |
 
 See [docs/phase-1-data.md](docs/phase-1-data.md) for the data loading walkthrough.
@@ -80,15 +80,54 @@ See [docs/phase-1-data.md](docs/phase-1-data.md) for the data loading walkthroug
 vertex-churn-pipeline/
 ├── configs/           # non-secret config
 ├── docs/              # setup & phase guides
+├── experiments/       # baseline vs engineered comparisons
+├── models/            # trained artifacts (local, gitignored)
 ├── notebooks/         # EDA (01_eda.ipynb)
 ├── scripts/           # setup_gcp.sh, load_to_bq.sh
+├── serving/           # CPR bundle (churn-rf/v1/, CHANGELOG.md)
 ├── sql/               # BigQuery exploration queries
-├── src/               # config, data loading, training (Phase 2)
+├── src/               # pipeline library + CLI entrypoints (see below)
+├── tests/
 ├── pyproject.toml     # dependencies (source of truth)
 ├── uv.lock            # pinned, reproducible env (committed)
 ├── requirements.txt   # kept in sync for non-uv users
 └── .env.example
 ```
+
+### Source layout (`src/`)
+
+The pipeline code lives in a flat `src/` package (~9 modules). That matches the scope of this project: one dataset, one champion model line, and a small set of Makefile-driven commands.
+
+| Module | Role |
+|--------|------|
+| `config.py`, `data.py`, `preprocess.py` | BigQuery load, feature prep, train/test split |
+| `train.py` | Train all model types, tune threshold, write `metrics.json` (incl. fairness slices) |
+| `champion.py` | Champion paths, artifact loading, serving manifest metadata |
+| `predict.py` | Score a customer row locally (parity check before deploy) |
+| `inspect.py` | Print saved fairness slices from `metrics.json` (`make fairness`) |
+| `package.py` | Build `serving/churn-rf/v1/` CPR bundle |
+| `deploy.py` | Upload bundle to GCS, register in Vertex, deploy endpoint |
+
+Boundaries that matter more than folder depth:
+
+- **Train** writes to `models/`; **serve** reads from `serving/churn-rf/vN/` (threshold applied outside the sklearn pipeline).
+- **Notebooks** are for exploration; reusable logic stays in `src/`.
+- **Serving** has its own `requirements.txt` — Vertex builds a minimal prediction image, not the full training env.
+
+### How this would scale
+
+For a larger system (batch scoring, monitoring, multiple model lines, shared feature store), I would split on **domain boundaries**, not file count:
+
+```text
+src/churn/
+├── data.py, preprocess.py     # ingestion + features
+├── train.py, champion.py      # training + artifact contract
+└── cli/
+    predict.py, inspect.py
+    package.py, deploy.py      # thin entrypoints; library code stays importable
+```
+
+Further growth might add `training/`, `serving/`, and `monitoring/` packages once modules stop fitting in one directory or teams own separate areas. This repo stays flat until that pain shows up — avoiding structure for its own sake keeps the demo easy to walk through in an interview while still showing where the seams are.
 
 ## License
 

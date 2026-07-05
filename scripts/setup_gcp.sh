@@ -49,6 +49,34 @@ if ! bq show --dataset "${GCP_PROJECT_ID}:${BQ_DATASET}" &>/dev/null; then
   bq --location="${GCP_REGION}" mk --dataset "${GCP_PROJECT_ID}:${BQ_DATASET}"
 fi
 
+: "${VERTEX_ARTIFACT_REPO:=vertex-churn}"
+echo "Creating Artifact Registry repo (skip if it already exists)..."
+if ! gcloud artifacts repositories describe "${VERTEX_ARTIFACT_REPO}" \
+  --location="${GCP_REGION}" &>/dev/null; then
+  gcloud artifacts repositories create "${VERTEX_ARTIFACT_REPO}" \
+    --repository-format=docker \
+    --location="${GCP_REGION}"
+fi
+
+echo "Granting Vertex AI service agent access (required for Model Registry upload)..."
+PROJECT_NUMBER="$(gcloud projects describe "${GCP_PROJECT_ID}" --format='value(projectNumber)')"
+VERTEX_SA="service-${PROJECT_NUMBER}@gcp-sa-aiplatform.iam.gserviceaccount.com"
+
+gcloud artifacts repositories add-iam-policy-binding "${VERTEX_ARTIFACT_REPO}" \
+  --location="${GCP_REGION}" \
+  --member="serviceAccount:${VERTEX_SA}" \
+  --role="roles/artifactregistry.reader" \
+  --quiet >/dev/null
+
+gcloud storage buckets add-iam-policy-binding "gs://${GCS_BUCKET}" \
+  --member="serviceAccount:${VERTEX_SA}" \
+  --role="roles/storage.objectViewer" \
+  --quiet >/dev/null
+
+echo "  Vertex AI SA: ${VERTEX_SA}"
+echo "  roles/artifactregistry.reader on ${VERTEX_ARTIFACT_REPO}"
+echo "  roles/storage.objectViewer on gs://${GCS_BUCKET}"
+
 echo ""
 echo "Done. Next steps:"
 echo "  1. Copy .env.example to .env and fill in values"
