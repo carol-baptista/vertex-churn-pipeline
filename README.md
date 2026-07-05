@@ -42,14 +42,14 @@ Details: [docs/phase-2-modeling.md](docs/phase-2-modeling.md)
 
 ### Batch scoring pipeline
 
-Live-like population **without labels** → score → append predictions to BigQuery.
+Score an **active customer population** (features only, no churn label) and append predictions to BigQuery for analytics and retention workflows.
 
 ```mermaid
 flowchart LR
-  subgraph seed["Seed scoring population"]
-    BQfull["churn_ml.customers\n(full snapshot)"]
-    BQscore["churn_ml.customers_scoring\nno Churn label\n+ as_of_date"]
-    BQfull -->|"make seed-scoring\nrandom sample"| BQscore
+  subgraph demo["This repo — demo seed step"]
+    BQfull["churn_ml.customers\n(static telco snapshot)"]
+    BQscore["churn_ml.customers_scoring\nrandom sample · no Churn\n+ as_of_date"]
+    BQfull -->|"make seed-scoring"| BQscore
   end
 
   subgraph prep["Shared preprocessing"]
@@ -75,21 +75,80 @@ flowchart LR
     Vertex --> GCSin --> CPR --> GCSout --> Proba
   end
 
-  subgraph out["Phase 4 — Predictions table"]
+  subgraph out["Predictions table"]
     Pred["churn_ml.predictions\npartitioned by scored_at\nrun_id · model_version"]
     Proba -->|"write_predictions()"| Pred
   end
 ```
 
-**Commands:**
+#### What is `make seed-scoring`?
 
-```bash
-make seed-scoring          # create customers_scoring (simulated live feed)
-make score-local           # score with local artifact → BQ (free)
-make score-vertex          # score via registered model → BQ (batch job cost)
+**Seed scoring does not run the model.** It only creates (or replaces) the input table `churn_ml.customers_scoring` — the population you intend to score.
+
+| | What it does | What it does *not* do |
+|---|---|---|
+| **`make seed-scoring`** | Copies a random sample from `customers`, drops the `Churn` label, adds `as_of_date` | Score anyone, change feature values, or write to `predictions` |
+| **`make score-local` / `make score-vertex`** | Reads `customers_scoring`, preprocesses, runs the model, appends rows to `predictions` | Create the scoring population |
+
+We drop `Churn` on purpose: in production you score **before** you know who cancelled. The training table (`customers`) keeps labels; the scoring table does not.
+
+The sample is **not synthetic data** — it is real rows from the telco snapshot, unchanged except for removing the label. It stands in for “this week’s accounts to score” because this portfolio uses a static CSV, not a live CRM feed.
+
+#### How it would work in production (no fake seed)
+
+You would **skip `make seed-scoring` entirely**. An upstream pipeline would already maintain the scoring population in BigQuery:
+
+```mermaid
+flowchart LR
+  subgraph prod["Production — no seed step"]
+    CRM["CRM / billing / product DBs"]
+    ETL["Daily or weekly ETL\ndbt · Dataflow · scheduled queries"]
+    BQlive["BigQuery\nactive_customers\nor features_current"]
+    CRM --> ETL --> BQlive
+  end
+
+  subgraph score["Same scoring steps as this repo"]
+    Job["Cloud Scheduler → Cloud Run Job\nor Workflow"]
+    Score["make score-vertex\nequivalent"]
+    Pred["churn_ml.predictions\nappend-only by run_id"]
+    BQlive --> Job --> Score --> Pred
+  end
+
+  subgraph consumers["Downstream — never call Vertex"]
+    Ana["Analytics dashboards"]
+    Ret["Retention campaigns / CRM export"]
+    Mon["Monitoring · drift · fairness over time"]
+    Pred --> Ana
+    Pred --> Ret
+    Pred --> Mon
+  end
 ```
 
-**Who reads what:** analysts and retention workflows query **`predictions`** in BigQuery — not Vertex. Registry only holds the model version used to score.
+| Demo (this repo) | Production |
+|---|---|
+| `customers` = static telco CSV in BQ | Warehouse tables refreshed by ETL (tenure, charges, contract, etc.) |
+| `make seed-scoring` = random sample, no label | `active_customers` (or similar) = all accounts due for scoring; no label column |
+| Manual `make score-*` | Cloud Scheduler triggers batch job weekly (e.g. Monday 6am) |
+| Same `predictions` table shape | Same pattern: `customerID`, proba, flag, `scored_at`, `run_id`, `model_version` |
+
+Vertex **Model Registry** holds *which model version* scored the batch. **BigQuery `predictions`** is what marketing, analytics, and ops actually query.
+
+#### Commands (demo)
+
+```bash
+make seed-scoring          # 1. build customers_scoring (skip in production)
+make score-local           # 2a. score with local artifact → BQ (free)
+make score-vertex          # 2b. score via registered model → BQ (batch job cost)
+```
+
+Verify predictions:
+
+```sql
+SELECT customerID, churn_probability, churn_flag, run_id, scored_at
+FROM `churn-predictor-ml-2026.churn_ml.predictions`
+ORDER BY scored_at DESC
+LIMIT 20;
+```
 
 Details: [docs/phase-4-batch.md](docs/phase-4-batch.md)
 
