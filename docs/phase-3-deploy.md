@@ -8,6 +8,22 @@ Package the **Random Forest champion** (not the CV winner) and deploy to Vertex 
 - `.env` filled from [`.env.example`](../.env.example)
 - ADC: `gcloud auth application-default login`
 - Billing budget alert set ([phase-0-setup.md](phase-0-setup.md))
+- **Docker Desktop** installed and running (CPR builds the serving image locally, then pushes to Artifact Registry)
+
+```bash
+# After installing Docker Desktop:
+docker --version
+gcloud auth configure-docker us-west1-docker.pkg.dev
+```
+
+If `make deploy` fails with `FileNotFoundError: 'docker'`, install [Docker Desktop](https://www.docker.com/products/docker-desktop/), start it, then re-run deploy.
+
+If registration fails with **Vertex AI Service Agent … does not have permission to access Artifact Registry**, re-run setup (grants IAM on the repo + bucket):
+
+```bash
+./scripts/setup_gcp.sh
+make deploy REGISTER_ONLY=1
+```
 
 ## Champion
 
