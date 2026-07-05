@@ -1,6 +1,6 @@
 # vertex-churn-pipeline
 
-Churn prediction portfolio project on **Google Cloud**: BigQuery → training → **Vertex AI Model Registry** → endpoint deployment.
+Churn prediction portfolio project on **Google Cloud**: BigQuery → local training → **Vertex Model Registry** → batch predictions back to BigQuery.
 
 Designed to demonstrate end-to-end ML on GCP: train locally, register the champion in Vertex, batch-score into BigQuery for analytics.
 
@@ -189,7 +189,7 @@ Vertex AI is **not** always-free. This project is built to stay cheap:
 
 New GCP accounts get **$300 credit for 90 days**. See [docs/phase-0-setup.md](docs/phase-0-setup.md) for details.
 
-## Phase 0 — Setup (current)
+## Phase 0 — Setup
 
 ### Prerequisites
 
@@ -229,15 +229,36 @@ Full walkthrough: **[docs/phase-0-setup.md](docs/phase-0-setup.md)**
 
 ## Project phases
 
-| Phase | Status | Description |
-|-------|--------|-------------|
-| 0 | **Done** | GCP project, APIs, bucket, BQ dataset, local env |
-| 1 | **In progress** | Load Telco churn data into BigQuery |
-| 2 | **Done** | EDA, train & evaluate locally |
-| 3 | **Done** | Register RF champion in Vertex Model Registry — see [docs/phase-3-deploy.md](docs/phase-3-deploy.md) |
-| 4 | **In progress** | Batch score to BigQuery (`customers_scoring` → `predictions`) — see [docs/phase-4-batch.md](docs/phase-4-batch.md) |
+End-to-end flow: **load data → train → register model → batch score to BQ**. Optional online endpoint for demos only.
 
-See [docs/phase-1-data.md](docs/phase-1-data.md) for the data loading walkthrough.
+| Phase | Status | What you get | Key commands / docs |
+|-------|--------|--------------|---------------------|
+| **0** | Done | GCP project, APIs, GCS bucket, BQ dataset, local Python env | [phase-0-setup.md](docs/phase-0-setup.md) · `./scripts/setup_gcp.sh` |
+| **1** | Done | Telco CSV in BigQuery (`churn_ml.customers`) | [phase-1-data.md](docs/phase-1-data.md) · `./scripts/load_to_bq.sh` |
+| **2** | Done | Trained models, threshold tuning, fairness slices, local artifacts | [phase-2-modeling.md](docs/phase-2-modeling.md) · `make train` · `make fairness` |
+| **3** | Done | RF champion packaged; CPR image + **Model Registry** (`churn-predictor`, us-west1) | [phase-3-deploy.md](docs/phase-3-deploy.md) · `make package` · `make deploy REGISTER_ONLY=1` |
+| **4** | Done | Batch scoring → **`churn_ml.predictions`** (local + Vertex batch paths) | [phase-4-batch.md](docs/phase-4-batch.md) · `make seed-scoring` · `make score-local` · `make score-vertex` |
+| **5** | Planned | **Monthly** Cloud Scheduler + monitoring / second model version | Automate `score-vertex` (cron `0 6 1 * *`); prediction drift dashboards |
+
+### Phase 4 note (demo vs production)
+
+| Step | This repo (demo) | Production |
+|------|------------------|------------|
+| Scoring population | `make seed-scoring` → `customers_scoring` | ETL-maintained table (e.g. `active_customers`) — **no seed step** |
+| Inference | `make score-local` or `make score-vertex` | Same batch job, triggered monthly |
+| Consumers | Query `predictions` in BQ | Analytics, retention CRM, monitoring |
+
+Phase 4 code is complete; Phase 5 is wiring the **monthly schedule** and optional observability (see [Batch scoring pipeline](#batch-scoring-pipeline) above).
+
+### Suggested run order (first time)
+
+```bash
+./scripts/setup_gcp.sh && ./scripts/load_to_bq.sh   # phases 0–1
+make train && make fairness                          # phase 2
+make package-test && make deploy REGISTER_ONLY=1     # phase 3
+make seed-scoring && make score-local                # phase 4 (demo)
+make score-vertex                                    # phase 4 (Vertex batch — after re-register if needed)
+```
 
 ## Repo structure
 
