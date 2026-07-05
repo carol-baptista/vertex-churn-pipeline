@@ -60,6 +60,14 @@ def test_predictor_loads_from_bundle(bundled_champion):
     assert "churn_probability" in result["predictions"][0]
 
 
+def test_predictor_passes_through_customer_id(bundled_champion):
+    bundle_dir, ds = bundled_champion
+    instance = ds.X.iloc[0].to_dict()
+    instance["customerID"] = "cust-pass-through"
+    actual = predict_with_bundle(bundle_dir, [instance])[0]
+    assert actual["customerID"] == "cust-pass-through"
+
+
 def test_bundle_matches_score_rows(bundled_champion):
     bundle_dir, ds = bundled_champion
     instance = ds.X.iloc[0].to_dict()
