@@ -28,7 +28,7 @@ make seed-scoring              # 500 random customers, Churn label dropped
 make seed-scoring LIMIT=100    # smaller sample
 ```
 
-This creates `customers_scoring` with an `as_of_date` column — as if you exported this week’s active accounts without labels.
+This creates `customers_scoring` with an `as_of_date` column — as if you exported this month’s active accounts without labels.
 
 ### 2. Score locally → write predictions to BQ (free)
 
@@ -82,10 +82,12 @@ make score-vertex
 | Use case | Dev / BQ pipeline test | Production-like inference |
 | Output | Same `predictions` table | Same `predictions` table |
 
-## Weekly schedule (not automated yet)
+## Monthly schedule (not automated yet)
 
-In production you would trigger `score-vertex` (or a Cloud Run wrapper) on a cron, e.g. Cloud Scheduler every Monday 6am. Phase 4 stops at the Makefile commands; Scheduler wiring is a small follow-up once batch scoring is verified.
+In production you would trigger `score-vertex` (or a Cloud Run wrapper) on a cron, e.g. Cloud Scheduler on the **1st of each month at 6am**. Phase 4 stops at the Makefile commands; Scheduler wiring is a small follow-up once batch scoring is verified.
+
+**Cadence rationale:** contracts here are at least month-to-month (many longer). Feature values (`tenure`, `MonthlyCharges`, `TotalCharges`, contract type) change on billing cycles, not weekly — so monthly scoring is enough and avoids redundant batch jobs.
 
 ## Interview one-liner
 
-> "Registry versions the model; weekly batch scoring writes probabilities and flags to BigQuery with `customerID`, `run_id`, and `scored_at` so analytics and retention never call Vertex directly."
+> "Registry versions the model; monthly batch scoring writes probabilities and flags to BigQuery with `customerID`, `run_id`, and `scored_at` so analytics and retention never call Vertex directly."

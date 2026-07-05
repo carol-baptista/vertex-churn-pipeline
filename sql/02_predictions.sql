@@ -16,7 +16,7 @@
 -- ORDER BY churn_probability DESC
 -- LIMIT 20;
 
--- Weekly monitoring example:
+-- Monthly monitoring example:
 -- SELECT
 --   DATE(scored_at) AS score_date,
 --   COUNT(*) AS n,

@@ -92,7 +92,7 @@ flowchart LR
 
 We drop `Churn` on purpose: in production you score **before** you know who cancelled. The training table (`customers`) keeps labels; the scoring table does not.
 
-The sample is **not synthetic data** — it is real rows from the telco snapshot, unchanged except for removing the label. It stands in for “this week’s accounts to score” because this portfolio uses a static CSV, not a live CRM feed.
+The sample is **not synthetic data** — it is real rows from the telco snapshot, unchanged except for removing the label. It stands in for “this period’s accounts to score” because this portfolio uses a static CSV, not a live CRM feed.
 
 #### How it would work in production (no fake seed)
 
@@ -102,7 +102,7 @@ You would **skip `make seed-scoring` entirely**. An upstream pipeline would alre
 flowchart LR
   subgraph prod["Production — no seed step"]
     CRM["CRM / billing / product DBs"]
-    ETL["Daily or weekly ETL\ndbt · Dataflow · scheduled queries"]
+    ETL["Daily ETL · monthly scoring cadence\ndbt · Dataflow · scheduled queries"]
     BQlive["BigQuery\nactive_customers\nor features_current"]
     CRM --> ETL --> BQlive
   end
@@ -128,7 +128,9 @@ flowchart LR
 |---|---|
 | `customers` = static telco CSV in BQ | Warehouse tables refreshed by ETL (tenure, charges, contract, etc.) |
 | `make seed-scoring` = random sample, no label | `active_customers` (or similar) = all accounts due for scoring; no label column |
-| Manual `make score-*` | Cloud Scheduler triggers batch job weekly (e.g. Monday 6am) |
+| Manual `make score-*` | Cloud Scheduler triggers batch job **monthly** (e.g. 1st of month, 6am) |
+
+**Why monthly, not weekly?** The shortest contract in this dataset is month-to-month — tenure, charges, and contract status typically move on a **billing cycle**, not a weekly one. Scoring every week would mostly re-read unchanged rows. A monthly batch aligns with when features actually update and matches how retention teams often run outreach campaigns.
 | Same `predictions` table shape | Same pattern: `customerID`, proba, flag, `scored_at`, `run_id`, `model_version` |
 
 Vertex **Model Registry** holds *which model version* scored the batch. **BigQuery `predictions`** is what marketing, analytics, and ops actually query.
@@ -175,7 +177,7 @@ GCS CSV → BigQuery customers
        → batch score → BigQuery predictions  ← analytics / production consumers
 ```
 
-Optional: `make deploy` (without `REGISTER_ONLY`) attaches the model to an **online endpoint** for real-time demos; weekly batch scoring does not require a running endpoint.
+Optional: `make deploy` (without `REGISTER_ONLY`) attaches the model to an **online endpoint** for real-time demos; monthly batch scoring does not require a running endpoint.
 
 ## Cost note
 
