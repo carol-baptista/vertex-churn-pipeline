@@ -129,9 +129,9 @@ flowchart LR
 | `customers` = static telco CSV in BQ | Warehouse tables refreshed by ETL (tenure, charges, contract, etc.) |
 | `make seed-scoring` = random sample, no label | `active_customers` (or similar) = all accounts due for scoring; no label column |
 | Manual `make score-*` | Cloud Scheduler triggers batch job **monthly** (e.g. 1st of month, 6am) |
+| Same `predictions` table shape | Same pattern: `customerID`, proba, flag, `scored_at`, `run_id`, `model_version` |
 
 **Why monthly, not weekly?** The shortest contract in this dataset is month-to-month — tenure, charges, and contract status typically move on a **billing cycle**, not a weekly one. Scoring every week would mostly re-read unchanged rows. A monthly batch aligns with when features actually update and matches how retention teams often run outreach campaigns.
-| Same `predictions` table shape | Same pattern: `customerID`, proba, flag, `scored_at`, `run_id`, `model_version` |
 
 Vertex **Model Registry** holds *which model version* scored the batch. **BigQuery `predictions`** is what marketing, analytics, and ops actually query.
 
@@ -260,6 +260,8 @@ make seed-scoring && make score-local                # phase 4 (demo)
 make score-vertex                                    # phase 4 (Vertex batch — after re-register if needed)
 ```
 
+**Walkthrough guide:** [docs/presentation-walkthrough.md](docs/presentation-walkthrough.md) — timed narrative, code paths, and Q&A prep.
+
 ## Repo structure
 
 ```text
@@ -314,7 +316,7 @@ src/churn/
     package.py, deploy.py      # thin entrypoints; library code stays importable
 ```
 
-Further growth might add `training/`, `serving/`, and `monitoring/` packages once modules stop fitting in one directory or teams own separate areas. This repo stays flat until that pain shows up — avoiding structure for its own sake keeps the demo easy to walk through in an interview while still showing where the seams are.
+Further growth might add `training/`, `serving/`, and `monitoring/` packages once modules stop fitting in one directory or teams own separate areas. This repo stays flat until that pain shows up — avoiding structure for its own sake keeps the walkthrough simple while still showing where the seams are.
 
 ## License
 

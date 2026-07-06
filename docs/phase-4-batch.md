@@ -87,7 +87,3 @@ make score-vertex
 In production you would trigger `score-vertex` (or a Cloud Run wrapper) on a cron, e.g. Cloud Scheduler on the **1st of each month at 6am**. Phase 4 stops at the Makefile commands; Scheduler wiring is a small follow-up once batch scoring is verified.
 
 **Cadence rationale:** contracts here are at least month-to-month (many longer). Feature values (`tenure`, `MonthlyCharges`, `TotalCharges`, contract type) change on billing cycles, not weekly — so monthly scoring is enough and avoids redundant batch jobs.
-
-## Interview one-liner
-
-> "Registry versions the model; monthly batch scoring writes probabilities and flags to BigQuery with `customerID`, `run_id`, and `scored_at` so analytics and retention never call Vertex directly."

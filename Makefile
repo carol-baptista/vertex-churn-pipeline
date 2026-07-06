@@ -70,7 +70,7 @@ help:
 	@echo "  make score-vertex      Score via Vertex BatchPredictionJob -> predictions"
 	@echo ""
 	@echo "Training options (feature_set=$(FEATURE_SET), metric=$(METRIC), pos=$(POS_WEIGHT)):"
-	@echo "  make train FEATURE_SET=engineered  Demo engineered features for interviews"
+	@echo "  make train FEATURE_SET=engineered  Demo engineered features vs baseline"
 	@echo "  make train-smoke       Quick run on 2000 rows, no tuning"
 	@echo "  make train-fast        Full data, skip tree-model grid searches"
 	@echo "  make train-probe       Probe audit only (--probe-feature)"
