@@ -3,6 +3,9 @@
 Turns the EDA decisions (`notebooks/01_eda.ipynb` -> Takeaways) into reproducible
 training code. Produces two trained models and registry-ready artifacts.
 
+**Navigate `src/train.py`:** [train-code-map.md](train-code-map.md) — section guide
+with line ranges (start at `main()`, then `train_one()`).
+
 ## Files
 
 | File | Purpose |

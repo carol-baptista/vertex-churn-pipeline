@@ -2,20 +2,20 @@
 
 Extended notes for navigating this repo. Start with the README
 [Project walkthrough](../README.md#project-walkthrough) section for linked
-folders; use this doc for talking points and timing.
+folders; use this doc for topic summaries and file pointers.
 
 **Suggested flow:** README [System overview](../README.md#system-overview) →
-topic tables below → open linked files → optional BigQuery Console.
+topics below → open linked files → optional BigQuery Console.
 
 ---
 
-## Opening (≈1 minute)
+## Problem and outcome
 
 **Problem**
 
 - Telco customer churn (~27% positive class).
 - Retention teams need ranked risk scores, not raw model output.
-- Goal: end-to-end pipeline on **Google Cloud** with sensible MLOps boundaries.
+- Goal: end-to-end pipeline on **Google Cloud** with clear separation between training, serving, and the predictions table in BigQuery.
 
 **Outcome**
 
@@ -25,7 +25,7 @@ topic tables below → open linked files → optional BigQuery Console.
 
 ---
 
-## Architecture (≈1 minute)
+## Architecture
 
 Use README [System overview](../README.md#system-overview) (vertical) and
 [Pipelines at a glance](../README.md#pipelines-at-a-glance) (training + scoring).
@@ -40,11 +40,11 @@ Production skips seed; ETL fills the scoring table (README: **How it would work 
 
 ---
 
-## Five topics to show in code (≈5–6 minutes)
+## Key topics
 
 ### 1. Champion selection — deploy judgment, not autopilot
 
-**Say:** XGBoost wins CV slightly; **Random Forest** wins **test** F1 and PR-AUC.
+XGBoost wins CV slightly; **Random Forest** wins **test** F1 and PR-AUC. Deploy champion chosen on held-out test performance.
 
 **Open**
 
@@ -58,24 +58,36 @@ Production skips seed; ETL fills the scoring table (README: **How it would work 
 | Precision | ~55% |
 | Threshold | ~0.441 |
 
-**Doc:** [phase-2-modeling.md](phase-2-modeling.md)
+**Doc:** [phase-2-modeling.md](phase-2-modeling.md) · [train-code-map.md](train-code-map.md)
 
 ---
 
 ### 2. Evaluation discipline — what each split is for
 
-**Say:** CV picks hyperparameters. Validation tunes threshold only. **Test** is the headline metric.
+CV picks hyperparameters. Validation tunes threshold only. **Test** is the headline metric for stakeholders.
 
 **Open**
 
 - [phase-2-modeling.md](phase-2-modeling.md) — Metrics reporting
+- [train-code-map.md](train-code-map.md) — `split_train_val_test`, `best_threshold`, `train_one`
 - [models/random_forest/metrics.json](../models/random_forest/metrics.json) — `validation` vs `test`
 
 ---
 
-### 3. Fairness — exclude, then audit
+### 3. Training loop — `train.py`
 
-**Say:** `gender` is never a model feature. Join back on `customerID` after scoring.
+One orchestrator; the main path is `main()` → `train_model_suite()` → `train_one()`.
+
+**Open**
+
+- [train-code-map.md](train-code-map.md) — full section guide
+- [src/train.py](../src/train.py) — `main()` ~1201, `train_one()` ~785
+
+---
+
+### 4. Fairness — exclude, then audit
+
+`gender` is never a model feature. Join back on `customerID` after scoring.
 
 **Open**
 
@@ -85,9 +97,9 @@ Production skips seed; ETL fills the scoring table (README: **How it would work 
 
 ---
 
-### 4. Serving boundary — threshold outside the pipeline
+### 5. Serving boundary — threshold outside the pipeline
 
-**Say:** Pipeline ends at `predict_proba`; threshold in CPR postprocess / metadata.
+Pipeline ends at `predict_proba`; threshold applied in CPR postprocess / metadata.
 
 **Open**
 
@@ -97,9 +109,9 @@ Production skips seed; ETL fills the scoring table (README: **How it would work 
 
 ---
 
-### 5. Batch scoring → BigQuery — the production handoff
+### 6. Batch scoring → BigQuery — the production handoff
 
-**Say:** Registry runs inference; predictions append to BQ with `run_id`, `scored_at`.
+Registry runs inference; predictions append to BQ with `run_id`, `scored_at`.
 
 **Open**
 
@@ -116,16 +128,16 @@ Production skips seed; ETL fills the scoring table (README: **How it would work 
 
 ---
 
-## Optional live demo (≈2 minutes)
+## Demo commands
 
 ```bash
 make fairness MODEL=random_forest
 make predict CUSTOMER_ID=7590-VHVEG
 ```
 
-Or screenshots: Model Registry (**us-west1**), BQ `predictions`, one batch job.
+Screenshots alternative: Model Registry (**us-west1**), BQ `predictions`, one batch job.
 
-Avoid live `make deploy` or `make score-vertex` unless pre-tested (batch cold start is slow).
+`make deploy` and `make score-vertex` have long cold starts — run only if pre-tested.
 
 ---
 
@@ -170,16 +182,3 @@ make test
 | [docs/](.) | Phase guides |
 | [notebooks/01_eda.ipynb](../notebooks/01_eda.ipynb) | EDA |
 | [tests/](../tests/) | Test suite |
-
----
-
-## Timing cheat sheet
-
-| Segment | Minutes |
-|---------|---------|
-| Opening + problem | 1 |
-| README architecture | 1 |
-| Five code topics | 5–6 |
-| Demo or screenshots | 1–2 |
-| Close + scope | 1 |
-| **Total** | **8–10** |

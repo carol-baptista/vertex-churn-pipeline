@@ -87,7 +87,7 @@ flowchart LR
 
 **Outputs:** `models/random_forest/model.joblib` (champion), `metrics.json` (threshold ~0.441, test F1/PR-AUC, fairness slices). Threshold is stored **outside** the sklearn pipeline and applied at scoring time.
 
-Details: [docs/phase-2-modeling.md](docs/phase-2-modeling.md)
+Details: [docs/phase-2-modeling.md](docs/phase-2-modeling.md) · [docs/train-code-map.md](docs/train-code-map.md) (navigate `train.py` by section)
 
 ### Batch scoring pipeline
 
@@ -309,7 +309,7 @@ make seed-scoring && make score-local                # phase 4 (demo)
 make score-vertex                                    # phase 4 (Vertex batch — after re-register if needed)
 ```
 
-**Walkthrough guide (extended):** [docs/project-walkthrough.md](docs/project-walkthrough.md)
+**Extended guide:** [docs/project-walkthrough.md](docs/project-walkthrough.md)
 
 ## Project walkthrough
 
@@ -333,10 +333,13 @@ Use this section to navigate the repo by topic. Each step links to the folders a
 
 ### 2. Training and evaluation (Phase 2)
 
+**[`train.py` code map](docs/train-code-map.md)** — section guide; start at `main()` → `train_one()`, not line 1.
+
 | Open | Why |
 |------|-----|
+| [docs/train-code-map.md](docs/train-code-map.md) | Navigate ~1,500 lines by section |
 | [src/preprocess.py](src/preprocess.py) | Cleaning, features, `PROTECTED_COLS`, join key |
-| [src/train.py](src/train.py) | Four models, stratified split, threshold, fairness |
+| [src/train.py](src/train.py) | `main()` (~1201), `train_one()` (~785), `fairness_audit()` (~363) |
 | [models/random_forest/metrics.json](models/random_forest/metrics.json) | Test vs validation vs CV; threshold ~0.441 |
 | [models/random_forest/](models/random_forest/) | Champion artifact + SHAP plots |
 | [experiments/baseline/](experiments/baseline/) | Baseline vs engineered comparison |
