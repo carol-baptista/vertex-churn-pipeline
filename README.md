@@ -4,6 +4,55 @@ Churn prediction portfolio project on **Google Cloud**: BigQuery → local train
 
 Designed to demonstrate end-to-end ML on GCP: train locally, register the champion in Vertex, batch-score into BigQuery for analytics.
 
+## System overview
+
+High-level flow (top to bottom). Detailed step diagrams are in [Pipelines at a glance](#pipelines-at-a-glance) below.
+
+```mermaid
+flowchart TB
+  subgraph phase01["Phase 0–1 · Data"]
+    GCS["GCS CSV\nscripts/load_to_bq.sh"]
+    BQc["BigQuery\nchurn_ml.customers"]
+    GCS --> BQc
+  end
+
+  subgraph phase2["Phase 2 · Train (local)"]
+    Train["src/train.py · make train"]
+    Models["models/random_forest/\nmodel.joblib · metrics.json"]
+    BQc --> Train --> Models
+  end
+
+  subgraph phase3["Phase 3 · Register"]
+    Pkg["serving/churn-rf/v1/\nsrc/package.py · make package"]
+    Cloud["GCS artifacts + CPR image\nsrc/deploy.py"]
+    Reg["Vertex Model Registry\nchurn-predictor · us-west1"]
+    Models --> Pkg --> Cloud --> Reg
+  end
+
+  subgraph phase4["Phase 4 · Batch score"]
+    Seed["make seed-scoring\nchurn_ml.customers_scoring"]
+    Score["src/batch.py\nscore-local · score-vertex"]
+    Pred["BigQuery\nchurn_ml.predictions"]
+    BQc --> Seed --> Score
+    Models --> Score
+    Reg --> Score
+    Score --> Pred
+  end
+
+  subgraph consumers["Downstream"]
+    Use["Analytics · retention CRM · monitoring"]
+    Pred --> Use
+  end
+
+  subgraph phase5["Phase 5 · Planned"]
+    Sched["Cloud Scheduler monthly\n0 6 1 * *"]
+  end
+
+  Sched -.-> Score
+```
+
+**Key idea:** Vertex stores the **model**; BigQuery stores the **scores**. Downstream teams query `predictions`, not Vertex.
+
 ## Pipelines at a glance
 
 Two flows share the same **preprocessing logic** (`src/preprocess.py`) but differ after the model is fit: training writes artifacts to disk; scoring reads a BQ population and writes predictions back to BQ.
@@ -260,14 +309,96 @@ make seed-scoring && make score-local                # phase 4 (demo)
 make score-vertex                                    # phase 4 (Vertex batch — after re-register if needed)
 ```
 
-**Walkthrough guide:** [docs/presentation-walkthrough.md](docs/presentation-walkthrough.md) — timed narrative, code paths, and Q&A prep.
+**Walkthrough guide (extended):** [docs/project-walkthrough.md](docs/project-walkthrough.md)
+
+## Project walkthrough
+
+Use this section to navigate the repo by topic. Each step links to the folders and files worth opening.
+
+### Problem and outcome
+
+- **Problem:** telco churn (~27% positive); retention needs ranked risk, not raw model output.
+- **Outcome:** train locally → register **Random Forest** in Vertex → batch scores land in **`churn_ml.predictions`**.
+- **Docs:** [notebooks/01_eda.ipynb](notebooks/01_eda.ipynb) (EDA that drove preprocessing)
+
+### 1. Data ingestion (Phase 0–1)
+
+| Open | Why |
+|------|-----|
+| [scripts/setup_gcp.sh](scripts/setup_gcp.sh) | APIs, bucket, BQ dataset, IAM for Vertex |
+| [scripts/load_to_bq.sh](scripts/load_to_bq.sh) | CSV → `churn_ml.customers` |
+| [src/config.py](src/config.py) · [src/data.py](src/data.py) | Project/table IDs, BQ load |
+| [sql/01_explore.sql](sql/01_explore.sql) | Exploration queries |
+| [docs/phase-0-setup.md](docs/phase-0-setup.md) · [docs/phase-1-data.md](docs/phase-1-data.md) | Setup walkthroughs |
+
+### 2. Training and evaluation (Phase 2)
+
+| Open | Why |
+|------|-----|
+| [src/preprocess.py](src/preprocess.py) | Cleaning, features, `PROTECTED_COLS`, join key |
+| [src/train.py](src/train.py) | Four models, stratified split, threshold, fairness |
+| [models/random_forest/metrics.json](models/random_forest/metrics.json) | Test vs validation vs CV; threshold ~0.441 |
+| [models/random_forest/](models/random_forest/) | Champion artifact + SHAP plots |
+| [experiments/baseline/](experiments/baseline/) | Baseline vs engineered comparison |
+| [src/inspect.py](src/inspect.py) | `make fairness` — slices from saved metrics |
+| [docs/phase-2-modeling.md](docs/phase-2-modeling.md) | Metrics reporting, defaults, experiments |
+
+**Champion choice:** XGBoost wins CV slightly; **Random Forest** wins **test** F1 (~0.62) and PR-AUC — see [serving/churn-rf/CHANGELOG.md](serving/churn-rf/CHANGELOG.md).
+
+### 3. Packaging and registration (Phase 3)
+
+| Open | Why |
+|------|-----|
+| [src/champion.py](src/champion.py) | Paths, manifest, scoring helpers |
+| [src/package.py](src/package.py) | Assemble `serving/churn-rf/v1/` |
+| [serving/churn-rf/v1/predictor.py](serving/churn-rf/v1/predictor.py) | CPR: load → preprocess → predict → threshold |
+| [serving/churn-rf/v1/](serving/churn-rf/v1/) | Bundle after `make package` |
+| [src/deploy.py](src/deploy.py) | GCS upload, CPR image, Registry |
+| [docs/phase-3-deploy.md](docs/phase-3-deploy.md) | Docker, IAM, `/predict` + `/health` routes |
+
+**Design point:** threshold lives in [threshold.json](serving/churn-rf/v1/threshold.json), not inside `model.joblib`.
+
+### 4. Batch scoring to BigQuery (Phase 4)
+
+| Open | Why |
+|------|-----|
+| [src/batch.py](src/batch.py) | `seed`, `score-local`, `score-vertex`, write to BQ |
+| [sql/02_predictions.sql](sql/02_predictions.sql) | Sample queries on `predictions` |
+| [docs/phase-4-batch.md](docs/phase-4-batch.md) | Demo vs production, monthly cadence |
+
+| Command | Role |
+|---------|------|
+| `make seed-scoring` | Demo only — builds `customers_scoring` (no label) |
+| `make score-local` | Fast path — local `model.joblib` → BQ |
+| `make score-vertex` | Production-like — Vertex BatchPredictionJob → BQ |
+
+### 5. Tests and quality
+
+| Open | Why |
+|------|-----|
+| [tests/](tests/) | 43 tests — preprocess, train, package, batch, serving parity |
+| [Makefile](Makefile) | All commands in one place |
+
+### 6. Planned (Phase 5)
+
+- Monthly **Cloud Scheduler** → `score-vertex` (cron `0 6 1 * *`)
+- Prediction monitoring / drift by `run_id`
+- Second model version + gated promotion
+
+### Quick demo commands
+
+```bash
+make fairness MODEL=random_forest
+make predict CUSTOMER_ID=7590-VHVEG
+make score-local    # after make seed-scoring
+```
 
 ## Repo structure
 
 ```text
 vertex-churn-pipeline/
 ├── configs/           # non-secret config
-├── docs/              # setup & phase guides
+├── docs/              # setup, phase guides, project-walkthrough.md
 ├── experiments/       # baseline vs engineered comparisons
 ├── models/            # trained artifacts (local, gitignored)
 ├── notebooks/         # EDA (01_eda.ipynb)
