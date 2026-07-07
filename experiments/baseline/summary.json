@@ -1,0 +1,169 @@
+{
+  "run_config": {
+    "sample": null,
+    "tune": true,
+    "probe_audit": false,
+    "probe_train": false,
+    "metric": "f1",
+    "grid_metric": "f1",
+    "grid_scoring": "f1",
+    "select_metric": "f1",
+    "select_scoring": "f1",
+    "metrics_aligned": true,
+    "feature_set": "baseline",
+    "engineered_features": false,
+    "pos_weight_mode": "sqrt",
+    "pos_weight_value": 1.6638,
+    "threshold_strategy": "f1",
+    "recall_floor": 0.75,
+    "data_split": {
+      "train": 0.7,
+      "validation": 0.15,
+      "test": 0.15
+    },
+    "threshold_tuned_on": "validation"
+  },
+  "metrics_reporting": {
+    "headline": "test",
+    "development_only": [
+      "cross_validation",
+      "validation"
+    ],
+    "workflow": {
+      "train": "Fit models; stratified CV on train for hyperparameters and winner selection.",
+      "validation": "Tune classification threshold (never seen during training).",
+      "test": "Single unbiased generalization estimate \u2014 quote this externally."
+    },
+    "split": {
+      "method": "stratified",
+      "ratios": {
+        "train": 0.7,
+        "validation": 0.15,
+        "test": 0.15
+      },
+      "why_stratified": "Preserve ~27% churn rate in every split so precision/recall on small holdouts stay representative (standard practice for imbalanced classification)."
+    }
+  },
+  "metric": "f1",
+  "feature_set": "baseline",
+  "full_feature_set": {
+    "n_raw_features": 18,
+    "winner": "xgboost",
+    "champion": {
+      "model": "xgboost",
+      "selected_by": "cv_f1 on train (stratified CV)",
+      "threshold_tuned_on": "validation",
+      "report": {
+        "pr_auc": 0.6733304333468406,
+        "roc_auc": 0.8371414782129067,
+        "recall": 0.7214285714285714,
+        "precision": 0.5372340425531915,
+        "f1": 0.6158536585365854,
+        "f2": 0.6751336898395722
+      },
+      "development_only": {
+        "cv_f1": 0.6334523058745148,
+        "validation": {
+          "pr_auc": 0.6750109025686167,
+          "recall": 0.7544483985765125,
+          "precision": 0.5506493506493506,
+          "f1": 0.6366366366366366,
+          "f2": 0.7024519549370444
+        },
+        "cv_f1_grid": 0.6334523058745148
+      },
+      "threshold": 0.43204331398010254
+    },
+    "models": {
+      "logreg": {
+        "development_only": {
+          "cv_f1": 0.6313776371199664,
+          "validation": {
+            "pr_auc": 0.6825968734425231,
+            "recall": 0.7508896797153025,
+            "precision": 0.5452196382428941,
+            "f1": 0.6317365269461078,
+            "f2": 0.6982131039046989
+          }
+        },
+        "report": {
+          "pr_auc": 0.6551704317641134,
+          "roc_auc": 0.8322416804559661,
+          "recall": 0.725,
+          "precision": 0.5259067357512953,
+          "f1": 0.6096096096096096,
+          "f2": 0.6739707835325365
+        },
+        "threshold": 0.42500224429250916
+      },
+      "random_forest": {
+        "development_only": {
+          "cv_f1": 0.6296104425445425,
+          "validation": {
+            "pr_auc": 0.6788414321574913,
+            "recall": 0.7330960854092526,
+            "precision": 0.5597826086956522,
+            "f1": 0.6348228043143297,
+            "f2": 0.6903485254691689
+          },
+          "cv_f1_grid": 0.6296104425445425
+        },
+        "report": {
+          "pr_auc": 0.6834287436675271,
+          "roc_auc": 0.842349236992094,
+          "recall": 0.7107142857142857,
+          "precision": 0.5497237569060773,
+          "f1": 0.6199376947040498,
+          "f2": 0.6713900134952766
+        },
+        "threshold": 0.4410815861857707
+      },
+      "xgboost": {
+        "development_only": {
+          "cv_f1": 0.6334523058745148,
+          "validation": {
+            "pr_auc": 0.6750109025686167,
+            "recall": 0.7544483985765125,
+            "precision": 0.5506493506493506,
+            "f1": 0.6366366366366366,
+            "f2": 0.7024519549370444
+          },
+          "cv_f1_grid": 0.6334523058745148
+        },
+        "report": {
+          "pr_auc": 0.6733304333468406,
+          "roc_auc": 0.8371414782129067,
+          "recall": 0.7214285714285714,
+          "precision": 0.5372340425531915,
+          "f1": 0.6158536585365854,
+          "f2": 0.6751336898395722
+        },
+        "threshold": 0.43204331398010254
+      },
+      "lightgbm": {
+        "development_only": {
+          "cv_f1": 0.6319499693401812,
+          "validation": {
+            "pr_auc": 0.6706777463580978,
+            "recall": 0.7402135231316725,
+            "precision": 0.5561497326203209,
+            "f1": 0.6351145038167939,
+            "f2": 0.6942590120160214
+          },
+          "cv_f1_grid": 0.6319499693401812
+        },
+        "report": {
+          "pr_auc": 0.6567435658847757,
+          "roc_auc": 0.8302813017098731,
+          "recall": 0.6928571428571428,
+          "precision": 0.5286103542234333,
+          "f1": 0.5996908809891809,
+          "f2": 0.652320107599193
+        },
+        "threshold": 0.4406318772115413
+      }
+    }
+  },
+  "probe_audit": false,
+  "probe_train": false
+}
