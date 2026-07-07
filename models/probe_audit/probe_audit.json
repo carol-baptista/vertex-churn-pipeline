@@ -1,0 +1,287 @@
+{
+  "method": "feature_engine.ProbeFeatureSelection",
+  "estimator": "RandomForestClassifier",
+  "collective": true,
+  "n_probes": 3,
+  "distribution": "binary",
+  "threshold": "mean",
+  "probe_columns": [
+    "binary_probe_0",
+    "binary_probe_2",
+    "binary_probe_1"
+  ],
+  "probe_threshold_value": 0.03225120609165737,
+  "n_features_in": 34,
+  "n_selected": 3,
+  "n_dropped": 31,
+  "features_to_drop": [
+    "num__SeniorCitizen",
+    "cat__Partner_False",
+    "cat__Partner_True",
+    "cat__Dependents_False",
+    "cat__Dependents_True",
+    "cat__PhoneService_False",
+    "cat__PhoneService_True",
+    "cat__MultipleLines_No",
+    "cat__MultipleLines_Yes",
+    "cat__InternetService_DSL",
+    "cat__InternetService_Fiber optic",
+    "cat__InternetService_No",
+    "cat__OnlineSecurity_No",
+    "cat__OnlineSecurity_Yes",
+    "cat__OnlineBackup_No",
+    "cat__OnlineBackup_Yes",
+    "cat__DeviceProtection_No",
+    "cat__DeviceProtection_Yes",
+    "cat__TechSupport_No",
+    "cat__TechSupport_Yes",
+    "cat__StreamingTV_No",
+    "cat__StreamingTV_Yes",
+    "cat__StreamingMovies_No",
+    "cat__StreamingMovies_Yes",
+    "cat__Contract_Month-to-month",
+    "cat__PaperlessBilling_False",
+    "cat__PaperlessBilling_True",
+    "cat__PaymentMethod_Bank transfer (automatic)",
+    "cat__PaymentMethod_Credit card (automatic)",
+    "cat__PaymentMethod_Electronic check",
+    "cat__PaymentMethod_Mailed check"
+  ],
+  "encoded_feature_names": [
+    "num__tenure",
+    "num__MonthlyCharges",
+    "num__TotalCharges",
+    "num__SeniorCitizen",
+    "cat__Partner_False",
+    "cat__Partner_True",
+    "cat__Dependents_False",
+    "cat__Dependents_True",
+    "cat__PhoneService_False",
+    "cat__PhoneService_True",
+    "cat__MultipleLines_No",
+    "cat__MultipleLines_Yes",
+    "cat__InternetService_DSL",
+    "cat__InternetService_Fiber optic",
+    "cat__InternetService_No",
+    "cat__OnlineSecurity_No",
+    "cat__OnlineSecurity_Yes",
+    "cat__OnlineBackup_No",
+    "cat__OnlineBackup_Yes",
+    "cat__DeviceProtection_No",
+    "cat__DeviceProtection_Yes",
+    "cat__TechSupport_No",
+    "cat__TechSupport_Yes",
+    "cat__StreamingTV_No",
+    "cat__StreamingTV_Yes",
+    "cat__StreamingMovies_No",
+    "cat__StreamingMovies_Yes",
+    "cat__Contract_Month-to-month",
+    "cat__PaperlessBilling_False",
+    "cat__PaperlessBilling_True",
+    "cat__PaymentMethod_Bank transfer (automatic)",
+    "cat__PaymentMethod_Credit card (automatic)",
+    "cat__PaymentMethod_Electronic check",
+    "cat__PaymentMethod_Mailed check"
+  ],
+  "feature_importances": [
+    {
+      "feature": "num__TotalCharges",
+      "importance": 0.1903507113840001
+    },
+    {
+      "feature": "num__MonthlyCharges",
+      "importance": 0.15414775406042938
+    },
+    {
+      "feature": "num__tenure",
+      "importance": 0.13701124050505803
+    },
+    {
+      "feature": "cat__PaymentMethod_Electronic check",
+      "importance": 0.024533204399772215
+    },
+    {
+      "feature": "cat__TechSupport_No",
+      "importance": 0.021025133907836214
+    },
+    {
+      "feature": "cat__PaymentMethod_Mailed check",
+      "importance": 0.020479999405533307
+    },
+    {
+      "feature": "cat__PaperlessBilling_True",
+      "importance": 0.020167556169349274
+    },
+    {
+      "feature": "cat__PaperlessBilling_False",
+      "importance": 0.019318471393905922
+    },
+    {
+      "feature": "cat__OnlineBackup_No",
+      "importance": 0.019060260342475946
+    },
+    {
+      "feature": "num__SeniorCitizen",
+      "importance": 0.018086841796324978
+    },
+    {
+      "feature": "cat__OnlineSecurity_No",
+      "importance": 0.018035730466974004
+    },
+    {
+      "feature": "cat__Partner_True",
+      "importance": 0.01633071768621723
+    },
+    {
+      "feature": "cat__PaymentMethod_Credit card (automatic)",
+      "importance": 0.01594013237303348
+    },
+    {
+      "feature": "cat__Partner_False",
+      "importance": 0.01592423177508461
+    },
+    {
+      "feature": "cat__Dependents_True",
+      "importance": 0.01513462984661898
+    },
+    {
+      "feature": "cat__InternetService_Fiber optic",
+      "importance": 0.01483001857881033
+    },
+    {
+      "feature": "cat__Dependents_False",
+      "importance": 0.014647357861750167
+    },
+    {
+      "feature": "cat__PaymentMethod_Bank transfer (automatic)",
+      "importance": 0.014359391447372577
+    },
+    {
+      "feature": "cat__MultipleLines_No",
+      "importance": 0.013457820462456522
+    },
+    {
+      "feature": "cat__DeviceProtection_No",
+      "importance": 0.012525474777456863
+    },
+    {
+      "feature": "cat__StreamingTV_No",
+      "importance": 0.011239663337757812
+    },
+    {
+      "feature": "cat__OnlineSecurity_Yes",
+      "importance": 0.011128158062968999
+    },
+    {
+      "feature": "cat__MultipleLines_Yes",
+      "importance": 0.011099928034097642
+    },
+    {
+      "feature": "cat__OnlineBackup_Yes",
+      "importance": 0.011049056643341484
+    },
+    {
+      "feature": "cat__TechSupport_Yes",
+      "importance": 0.010892728225006143
+    },
+    {
+      "feature": "cat__StreamingMovies_No",
+      "importance": 0.010614353491991423
+    },
+    {
+      "feature": "cat__PhoneService_False",
+      "importance": 0.009657200463950542
+    },
+    {
+      "feature": "cat__StreamingTV_Yes",
+      "importance": 0.0094787918869257
+    },
+    {
+      "feature": "cat__PhoneService_True",
+      "importance": 0.009423652536427577
+    },
+    {
+      "feature": "cat__DeviceProtection_Yes",
+      "importance": 0.009163913332869627
+    },
+    {
+      "feature": "cat__StreamingMovies_Yes",
+      "importance": 0.008808697541188829
+    },
+    {
+      "feature": "cat__InternetService_DSL",
+      "importance": 0.008717070974043442
+    },
+    {
+      "feature": "cat__InternetService_No",
+      "importance": 0.006606488553998589
+    },
+    {
+      "feature": "cat__Contract_Month-to-month",
+      "importance": 0.0
+    }
+  ],
+  "top_univariate_correlations": [
+    {
+      "feature": "num__tenure",
+      "churn_correlation": -0.2403328117124282
+    },
+    {
+      "feature": "cat__InternetService_Fiber optic",
+      "churn_correlation": 0.22110671489230668
+    },
+    {
+      "feature": "cat__TechSupport_No",
+      "churn_correlation": 0.2198669513747937
+    },
+    {
+      "feature": "cat__OnlineBackup_No",
+      "churn_correlation": 0.21386116803018765
+    },
+    {
+      "feature": "cat__OnlineSecurity_No",
+      "churn_correlation": 0.21324817970197582
+    },
+    {
+      "feature": "num__TotalCharges",
+      "churn_correlation": -0.18704572204864234
+    },
+    {
+      "feature": "cat__PaymentMethod_Electronic check",
+      "churn_correlation": 0.18597393350881092
+    },
+    {
+      "feature": "cat__InternetService_No",
+      "churn_correlation": -0.1748804671299947
+    },
+    {
+      "feature": "cat__DeviceProtection_No",
+      "churn_correlation": 0.1697657691034238
+    },
+    {
+      "feature": "num__MonthlyCharges",
+      "churn_correlation": 0.1484246044506621
+    },
+    {
+      "feature": "cat__StreamingTV_No",
+      "churn_correlation": 0.1463410413082844
+    },
+    {
+      "feature": "cat__StreamingMovies_No",
+      "churn_correlation": 0.1399110988595933
+    },
+    {
+      "feature": "cat__PaperlessBilling_False",
+      "churn_correlation": -0.12782626101221578
+    },
+    {
+      "feature": "cat__PaperlessBilling_True",
+      "churn_correlation": 0.12782626101221578
+    },
+    {
+      "feature": "num__SeniorCitizen",
+      "churn_correlation": 0.11341649039950788
+    }
+  ],
+  "notes": "Probe importance is conditional (RF with all features). A feature can have high EDA correlation but low probe rank when signal is absorbed by correlated columns (e.g. Electronic check overlaps Month-to-month)."
+}

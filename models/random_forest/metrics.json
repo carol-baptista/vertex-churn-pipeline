@@ -1,0 +1,142 @@
+{
+  "threshold": 0.4410815861857707,
+  "cv_score": 0.6296104425445425,
+  "select_metric": "f1",
+  "validation": {
+    "threshold": 0.4410815861857707,
+    "pr_auc": 0.6788414321574913,
+    "roc_auc": 0.8432008291448069,
+    "precision": 0.5597826086956522,
+    "recall": 0.7330960854092526,
+    "f1": 0.6348228043143297,
+    "f2": 0.6903485254691689,
+    "confusion_matrix": [
+      [
+        614,
+        162
+      ],
+      [
+        75,
+        206
+      ]
+    ]
+  },
+  "test": {
+    "threshold": 0.4410815861857707,
+    "pr_auc": 0.6834287436675271,
+    "roc_auc": 0.842349236992094,
+    "precision": 0.5497237569060773,
+    "recall": 0.7107142857142857,
+    "f1": 0.6199376947040498,
+    "f2": 0.6713900134952766,
+    "confusion_matrix": [
+      [
+        614,
+        163
+      ],
+      [
+        81,
+        199
+      ]
+    ]
+  },
+  "cv_grid_score": 0.6296104425445425,
+  "fairness_by_gender": {
+    "Female": {
+      "n": 521,
+      "actual_churn_rate": 0.2783109404990403,
+      "predicted_positive_rate": 0.3570057581573896,
+      "recall": 0.696551724137931,
+      "precision": 0.543010752688172
+    },
+    "Male": {
+      "n": 536,
+      "actual_churn_rate": 0.251865671641791,
+      "predicted_positive_rate": 0.3283582089552239,
+      "recall": 0.725925925925926,
+      "precision": 0.5568181818181818
+    }
+  },
+  "feature_importance_top20": [
+    {
+      "feature": "num__tenure",
+      "importance": 0.14871391621094254
+    },
+    {
+      "feature": "cat__Contract_Month-to-month",
+      "importance": 0.14264897862150128
+    },
+    {
+      "feature": "num__TotalCharges",
+      "importance": 0.09951331425192025
+    },
+    {
+      "feature": "num__MonthlyCharges",
+      "importance": 0.07216404045946896
+    },
+    {
+      "feature": "cat__OnlineSecurity_No",
+      "importance": 0.0720923913398114
+    },
+    {
+      "feature": "cat__TechSupport_No",
+      "importance": 0.06362966495229558
+    },
+    {
+      "feature": "cat__InternetService_Fiber optic",
+      "importance": 0.06012060198493168
+    },
+    {
+      "feature": "cat__Contract_Two year",
+      "importance": 0.04810926985602153
+    },
+    {
+      "feature": "cat__PaymentMethod_Electronic check",
+      "importance": 0.04031690631742339
+    },
+    {
+      "feature": "cat__InternetService_No",
+      "importance": 0.021450840677269538
+    },
+    {
+      "feature": "cat__OnlineBackup_No",
+      "importance": 0.021297244129968536
+    },
+    {
+      "feature": "cat__DeviceProtection_No",
+      "importance": 0.020641709241308412
+    },
+    {
+      "feature": "cat__InternetService_DSL",
+      "importance": 0.01990789951868906
+    },
+    {
+      "feature": "cat__Contract_One year",
+      "importance": 0.018595538648860353
+    },
+    {
+      "feature": "cat__OnlineSecurity_Yes",
+      "importance": 0.014287073114810107
+    },
+    {
+      "feature": "cat__PaperlessBilling_False",
+      "importance": 0.013335410880049078
+    },
+    {
+      "feature": "cat__PaperlessBilling_True",
+      "importance": 0.012650046928218178
+    },
+    {
+      "feature": "cat__TechSupport_Yes",
+      "importance": 0.010634410390945412
+    },
+    {
+      "feature": "num__SeniorCitizen",
+      "importance": 0.007781241761853313
+    },
+    {
+      "feature": "cat__StreamingMovies_Yes",
+      "importance": 0.007246386834810919
+    }
+  ]
+}

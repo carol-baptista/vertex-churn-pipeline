@@ -12,7 +12,7 @@ with line ranges (start at `main()`, then `train_one()`).
 | --- | --- |
 | `src/preprocess.py` | Clean the raw table + build the feature `ColumnTransformer`. |
 | `src/train.py` | Train + compare Logistic Regression, Random Forest, XGBoost, and LightGBM; evaluate, save artifacts. |
-| `models/` | Output: fitted pipelines + metrics (git-ignored). |
+| `models/` | Output: `model.joblib` local; `metrics.json` + eval plots tracked in git. |
 
 ## What the pipeline does
 
