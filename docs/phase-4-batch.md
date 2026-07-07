@@ -88,6 +88,21 @@ In production you would trigger `score-vertex` (or a Cloud Run wrapper) on a cro
 
 **Cadence rationale:** contracts here are at least month-to-month (many longer). Feature values (`tenure`, `MonthlyCharges`, `TotalCharges`, contract type) change on billing cycles, not weekly — so monthly scoring is enough and avoids redundant batch jobs.
 
-## Interview one-liner
+## Batch + cache hybrid (recommended for product reads)
 
-> "Registry versions the model; monthly batch scoring writes probabilities and flags to BigQuery with `customerID`, `run_id`, and `scored_at` so analytics and retention never call Vertex directly."
+Batch → BQ is the source of truth. For apps or agent tools that need **many low-latency lookups**, warm a cache after each batch run instead of keeping a Vertex endpoint up 24/7.
+
+| Step | Repo | Production |
+|------|------|------------|
+| Score | `make score-vertex` | Cloud Scheduler → batch job |
+| Materialize latest | [sql/03_predictions_latest.sql](../sql/03_predictions_latest.sql) | BQ view |
+| Warm cache | `make warm-cache` | Cloud Run Job → Redis / Memorystore |
+| App read | `make cache-lookup CUSTOMER_ID=…` | API `GET /risk/{id}` from cache |
+
+```bash
+make score-local
+make warm-cache
+make cache-lookup CUSTOMER_ID=7590-VHVEG
+```
+
+Full write-up: [inference-patterns.md](inference-patterns.md)

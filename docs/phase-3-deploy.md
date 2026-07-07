@@ -156,7 +156,3 @@ Registration sets `predictRoute=/predict` and `healthRoute=/health` on the CPR c
 ## Cost reminder
 
 Registry + GCS = cheap. **Endpoints bill while deployed** — always `make undeploy` after screenshots.
-
-## Interview one-liner
-
-> "I packaged the RF champion with CPR so Vertex serves raw features, applies the validation-tuned threshold at postprocess, and returns proba + flag. I verified local parity before deploying, then undeployed to control cost."

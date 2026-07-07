@@ -40,7 +40,7 @@ ifeq ($(REGISTER_ONLY),1)
 DEPLOY_EXTRA += --register-only
 endif
 
-.PHONY: help sync test train train-baseline train-smoke train-fast train-probe train-probe-compare fairness predict package package-test deploy undeploy seed-scoring score-local score-vertex
+.PHONY: help sync test train train-baseline train-smoke train-fast train-probe train-probe-compare fairness pr-curve predict package package-test deploy undeploy seed-scoring score-local score-vertex warm-cache cache-lookup
 
 help:
 	@echo "Targets:"
@@ -53,6 +53,7 @@ help:
 	@echo "  make train-baseline    Optional: freeze baseline snapshot for comparisons"
 	@echo "  make train             Full train (default: baseline features)"
 	@echo "  make fairness          Print test fairness slices (MODEL=$(MODEL))"
+	@echo "  make pr-curve          Plot precision-recall curve on test set (MODEL=$(MODEL))"
 	@echo "  make predict           Score one BigQuery row with saved artifact"
 	@echo "  make predict CUSTOMER_ID=7590-VHVEG"
 	@echo ""
@@ -68,9 +69,11 @@ help:
 	@echo "  make seed-scoring      Sample customers_scoring (LIMIT=$(LIMIT), no Churn label)"
 	@echo "  make score-local       Score with local model -> churn_ml.predictions"
 	@echo "  make score-vertex      Score via Vertex BatchPredictionJob -> predictions"
+	@echo "  make warm-cache        Export latest scores -> data/cache/ (hybrid read path)"
+	@echo "  make cache-lookup CUSTOMER_ID=7590-VHVEG  Read one customer from cache"
 	@echo ""
 	@echo "Training options (feature_set=$(FEATURE_SET), metric=$(METRIC), pos=$(POS_WEIGHT)):"
-	@echo "  make train FEATURE_SET=engineered  Demo engineered features for interviews"
+	@echo "  make train FEATURE_SET=engineered  Demo engineered features vs baseline"
 	@echo "  make train-smoke       Quick run on 2000 rows, no tuning"
 	@echo "  make train-fast        Full data, skip tree-model grid searches"
 	@echo "  make train-probe       Probe audit only (--probe-feature)"
@@ -107,6 +110,9 @@ train-probe-compare: sync
 fairness:
 	uv run python -m src.inspect --model $(MODEL)
 
+pr-curve:
+	uv run python -m src.inspect --pr-curve --model $(MODEL)
+
 predict:
 ifeq ($(strip $(CUSTOMER_ID)),)
 	uv run python -m src.predict --model $(MODEL) --row $(ROW)
@@ -134,3 +140,9 @@ score-local:
 
 score-vertex:
 	uv run python -m src.batch score-vertex
+
+warm-cache:
+	uv run python -m src.cache_warm warm
+
+cache-lookup:
+	uv run python -m src.cache_warm lookup --customer-id $(CUSTOMER_ID)

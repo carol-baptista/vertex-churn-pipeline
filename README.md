@@ -4,6 +4,55 @@ Churn prediction portfolio project on **Google Cloud**: BigQuery → local train
 
 Designed to demonstrate end-to-end ML on GCP: train locally, register the champion in Vertex, batch-score into BigQuery for analytics.
 
+## System overview
+
+High-level flow (top to bottom). Detailed step diagrams are in [Pipelines at a glance](#pipelines-at-a-glance) below.
+
+```mermaid
+flowchart TB
+  subgraph phase01["Phase 0–1 · Data"]
+    GCS["GCS CSV\nscripts/load_to_bq.sh"]
+    BQc["BigQuery\nchurn_ml.customers"]
+    GCS --> BQc
+  end
+
+  subgraph phase2["Phase 2 · Train (local)"]
+    Train["src/train.py · make train"]
+    Models["models/random_forest/\nmodel.joblib · metrics.json"]
+    BQc --> Train --> Models
+  end
+
+  subgraph phase3["Phase 3 · Register"]
+    Pkg["serving/churn-rf/v1/\nsrc/package.py · make package"]
+    Cloud["GCS artifacts + CPR image\nsrc/deploy.py"]
+    Reg["Vertex Model Registry\nchurn-predictor · us-west1"]
+    Models --> Pkg --> Cloud --> Reg
+  end
+
+  subgraph phase4["Phase 4 · Batch score"]
+    Seed["make seed-scoring\nchurn_ml.customers_scoring"]
+    Score["src/batch.py\nscore-local · score-vertex"]
+    Pred["BigQuery\nchurn_ml.predictions"]
+    BQc --> Seed --> Score
+    Models --> Score
+    Reg --> Score
+    Score --> Pred
+  end
+
+  subgraph consumers["Downstream"]
+    Use["Analytics · retention CRM · monitoring"]
+    Pred --> Use
+  end
+
+  subgraph phase5["Phase 5 · Planned"]
+    Sched["Cloud Scheduler monthly\n0 6 1 * *"]
+  end
+
+  Sched -.-> Score
+```
+
+**Key idea:** Vertex stores the **model**; BigQuery stores the **scores**. Downstream teams query `predictions`, not Vertex.
+
 ## Pipelines at a glance
 
 Two flows share the same **preprocessing logic** (`src/preprocess.py`) but differ after the model is fit: training writes artifacts to disk; scoring reads a BQ population and writes predictions back to BQ.
@@ -38,7 +87,7 @@ flowchart LR
 
 **Outputs:** `models/random_forest/model.joblib` (champion), `metrics.json` (threshold ~0.441, test F1/PR-AUC, fairness slices). Threshold is stored **outside** the sklearn pipeline and applied at scoring time.
 
-Details: [docs/phase-2-modeling.md](docs/phase-2-modeling.md)
+Details: [docs/phase-2-modeling.md](docs/phase-2-modeling.md) · [docs/train-code-map.md](docs/train-code-map.md) (navigate `train.py` by section)
 
 ### Batch scoring pipeline
 
@@ -129,9 +178,9 @@ flowchart LR
 | `customers` = static telco CSV in BQ | Warehouse tables refreshed by ETL (tenure, charges, contract, etc.) |
 | `make seed-scoring` = random sample, no label | `active_customers` (or similar) = all accounts due for scoring; no label column |
 | Manual `make score-*` | Cloud Scheduler triggers batch job **monthly** (e.g. 1st of month, 6am) |
+| Same `predictions` table shape | Same pattern: `customerID`, proba, flag, `scored_at`, `run_id`, `model_version` |
 
 **Why monthly, not weekly?** The shortest contract in this dataset is month-to-month — tenure, charges, and contract status typically move on a **billing cycle**, not a weekly one. Scoring every week would mostly re-read unchanged rows. A monthly batch aligns with when features actually update and matches how retention teams often run outreach campaigns.
-| Same `predictions` table shape | Same pattern: `customerID`, proba, flag, `scored_at`, `run_id`, `model_version` |
 
 Vertex **Model Registry** holds *which model version* scored the batch. **BigQuery `predictions`** is what marketing, analytics, and ops actually query.
 
@@ -153,6 +202,20 @@ LIMIT 20;
 ```
 
 Details: [docs/phase-4-batch.md](docs/phase-4-batch.md)
+
+#### Batch + cache hybrid (how I would serve in-app reads)
+
+Monthly batch writes scores to BigQuery. A **post-batch warm job** exports the latest row per customer to a read cache (Redis/Memorystore in production; local JSONL in this repo). Product APIs read the cache — no Vertex call on the hot path.
+
+```bash
+make score-local                              # 1. batch → predictions (BQ)
+make warm-cache                               # 2. post-batch → data/cache/churn_scores.jsonl
+make cache-lookup CUSTOMER_ID=7590-VHVEG      # 3. app-style read (milliseconds, no model)
+```
+
+Contrast `make predict CUSTOMER_ID=…`, which re-runs the model for debugging only.
+
+Full comparison (batch vs endpoint vs hybrid): [docs/inference-patterns.md](docs/inference-patterns.md) · SQL view: [sql/03_predictions_latest.sql](sql/03_predictions_latest.sql)
 
 ### Model registration (between train and Vertex scoring)
 
@@ -177,7 +240,7 @@ GCS CSV → BigQuery customers
        → batch score → BigQuery predictions  ← analytics / production consumers
 ```
 
-Optional: `make deploy` (without `REGISTER_ONLY`) attaches the model to an **online endpoint** for real-time demos; monthly batch scoring does not require a running endpoint.
+Optional: `make deploy` (without `REGISTER_ONLY`) attaches the model to an **online endpoint** for real-time demos; monthly batch scoring does not require a running endpoint. For in-app reads at scale, see [inference patterns](docs/inference-patterns.md) (batch + cache hybrid).
 
 ## Cost note
 
@@ -237,7 +300,7 @@ End-to-end flow: **load data → train → register model → batch score to BQ*
 | **1** | Done | Telco CSV in BigQuery (`churn_ml.customers`) | [phase-1-data.md](docs/phase-1-data.md) · `./scripts/load_to_bq.sh` |
 | **2** | Done | Trained models, threshold tuning, fairness slices, local artifacts | [phase-2-modeling.md](docs/phase-2-modeling.md) · `make train` · `make fairness` |
 | **3** | Done | RF champion packaged; CPR image + **Model Registry** (`churn-predictor`, us-west1) | [phase-3-deploy.md](docs/phase-3-deploy.md) · `make package` · `make deploy REGISTER_ONLY=1` |
-| **4** | Done | Batch scoring → **`churn_ml.predictions`** (local + Vertex batch paths) | [phase-4-batch.md](docs/phase-4-batch.md) · `make seed-scoring` · `make score-local` · `make score-vertex` |
+| **4** | Done | Batch scoring → **`churn_ml.predictions`** (local + Vertex batch paths) | [phase-4-batch.md](docs/phase-4-batch.md) · [inference-patterns.md](docs/inference-patterns.md) · `make score-*` · `make warm-cache` |
 | **5** | Planned | **Monthly** Cloud Scheduler + monitoring / second model version | Automate `score-vertex` (cron `0 6 1 * *`); prediction drift dashboards |
 
 ### Phase 4 note (demo vs production)
@@ -260,12 +323,104 @@ make seed-scoring && make score-local                # phase 4 (demo)
 make score-vertex                                    # phase 4 (Vertex batch — after re-register if needed)
 ```
 
+**Extended guide:** [docs/project-walkthrough.md](docs/project-walkthrough.md)
+
+## Project walkthrough
+
+Use this section to navigate the repo by topic. Each step links to the folders and files worth opening.
+
+### Problem and outcome
+
+- **Problem:** telco churn (~27% positive); retention needs ranked risk, not raw model output.
+- **Outcome:** train locally → register **Random Forest** in Vertex → batch scores land in **`churn_ml.predictions`**.
+- **Docs:** [notebooks/01_eda.ipynb](notebooks/01_eda.ipynb) (EDA that drove preprocessing)
+
+### 1. Data ingestion (Phase 0–1)
+
+| Open | Why |
+|------|-----|
+| [scripts/setup_gcp.sh](scripts/setup_gcp.sh) | APIs, bucket, BQ dataset, IAM for Vertex |
+| [scripts/load_to_bq.sh](scripts/load_to_bq.sh) | CSV → `churn_ml.customers` |
+| [src/config.py](src/config.py) · [src/data.py](src/data.py) | Project/table IDs, BQ load |
+| [sql/01_explore.sql](sql/01_explore.sql) | Exploration queries |
+| [docs/phase-0-setup.md](docs/phase-0-setup.md) · [docs/phase-1-data.md](docs/phase-1-data.md) | Setup walkthroughs |
+
+### 2. Training and evaluation (Phase 2)
+
+**[`train.py` code map](docs/train-code-map.md)** — section guide; start at `main()` → `train_one()`, not line 1.
+
+| Open | Why |
+|------|-----|
+| [docs/train-code-map.md](docs/train-code-map.md) | Navigate ~1,500 lines by section |
+| [src/preprocess.py](src/preprocess.py) | Cleaning, features, `PROTECTED_COLS`, join key |
+| [src/train.py](src/train.py) | `main()` (~1201), `train_one()` (~785), `fairness_audit()` (~363) |
+| [models/random_forest/metrics.json](models/random_forest/metrics.json) | Test vs validation vs CV; threshold ~0.441 |
+| [models/random_forest/](models/random_forest/) | Champion artifact + SHAP plots |
+| [experiments/baseline/](experiments/baseline/) | Baseline vs engineered comparison |
+| [src/inspect.py](src/inspect.py) | `make fairness` — slices from saved metrics |
+| [docs/phase-2-modeling.md](docs/phase-2-modeling.md) | Metrics reporting, defaults, experiments |
+
+**Champion choice:** XGBoost wins CV slightly; **Random Forest** wins **test** F1 (~0.62) and PR-AUC — see [serving/churn-rf/CHANGELOG.md](serving/churn-rf/CHANGELOG.md).
+
+### 3. Packaging and registration (Phase 3)
+
+| Open | Why |
+|------|-----|
+| [src/champion.py](src/champion.py) | Paths, manifest, scoring helpers |
+| [src/package.py](src/package.py) | Assemble `serving/churn-rf/v1/` |
+| [serving/churn-rf/v1/predictor.py](serving/churn-rf/v1/predictor.py) | CPR: load → preprocess → predict → threshold |
+| [serving/churn-rf/v1/](serving/churn-rf/v1/) | Bundle after `make package` |
+| [src/deploy.py](src/deploy.py) | GCS upload, CPR image, Registry |
+| [docs/phase-3-deploy.md](docs/phase-3-deploy.md) | Docker, IAM, `/predict` + `/health` routes |
+
+**Design point:** threshold lives in [threshold.json](serving/churn-rf/v1/threshold.json), not inside `model.joblib`.
+
+### 4. Batch scoring to BigQuery (Phase 4)
+
+| Open | Why |
+|------|-----|
+| [src/batch.py](src/batch.py) | `seed`, `score-local`, `score-vertex`, write to BQ |
+| [src/cache_warm.py](src/cache_warm.py) | Post-batch cache export + lookup (hybrid demo) |
+| [sql/02_predictions.sql](sql/02_predictions.sql) | Sample queries on `predictions` |
+| [sql/03_predictions_latest.sql](sql/03_predictions_latest.sql) | Latest score per customer (cache source) |
+| [docs/inference-patterns.md](docs/inference-patterns.md) | Batch vs endpoint vs batch+cache |
+| [docs/phase-4-batch.md](docs/phase-4-batch.md) | Demo vs production, monthly cadence |
+
+| Command | Role |
+|---------|------|
+| `make seed-scoring` | Demo only — builds `customers_scoring` (no label) |
+| `make score-local` | Fast path — local `model.joblib` → BQ |
+| `make score-vertex` | Production-like — Vertex BatchPredictionJob → BQ |
+| `make warm-cache` | Post-batch — export latest scores to read cache |
+| `make cache-lookup CUSTOMER_ID=…` | App-style read from cache (no model call) |
+
+### 5. Tests and quality
+
+| Open | Why |
+|------|-----|
+| [tests/](tests/) | 43 tests — preprocess, train, package, batch, serving parity |
+| [Makefile](Makefile) | All commands in one place |
+
+### 6. Planned (Phase 5)
+
+- Monthly **Cloud Scheduler** → `score-vertex` (cron `0 6 1 * *`)
+- Prediction monitoring / drift by `run_id`
+- Second model version + gated promotion
+
+### Quick demo commands
+
+```bash
+make fairness MODEL=random_forest
+make predict CUSTOMER_ID=7590-VHVEG
+make score-local    # after make seed-scoring
+```
+
 ## Repo structure
 
 ```text
 vertex-churn-pipeline/
 ├── configs/           # non-secret config
-├── docs/              # setup & phase guides
+├── docs/              # setup, phase guides, project-walkthrough.md
 ├── experiments/       # baseline vs engineered comparisons
 ├── models/            # trained artifacts (local, gitignored)
 ├── notebooks/         # EDA (01_eda.ipynb)
@@ -294,6 +449,7 @@ The pipeline code lives in a flat `src/` package (~9 modules). That matches the 
 | `package.py` | Build `serving/churn-rf/v1/` CPR bundle |
 | `deploy.py` | Upload bundle to GCS, register in Vertex, deploy endpoint |
 | `batch.py` | Seed `customers_scoring`, score to `predictions` (local or Vertex batch) |
+| `cache_warm.py` | Export `predictions_latest` to read cache (hybrid pattern showcase) |
 
 Boundaries that matter more than folder depth:
 
@@ -314,7 +470,7 @@ src/churn/
     package.py, deploy.py      # thin entrypoints; library code stays importable
 ```
 
-Further growth might add `training/`, `serving/`, and `monitoring/` packages once modules stop fitting in one directory or teams own separate areas. This repo stays flat until that pain shows up — avoiding structure for its own sake keeps the demo easy to walk through in an interview while still showing where the seams are.
+Further growth might add `training/`, `serving/`, and `monitoring/` packages once modules stop fitting in one directory or teams own separate areas. This repo stays flat until that pain shows up — avoiding structure for its own sake keeps the walkthrough simple while still showing where the seams are.
 
 ## License
 

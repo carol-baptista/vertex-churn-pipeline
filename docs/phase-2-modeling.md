@@ -3,6 +3,9 @@
 Turns the EDA decisions (`notebooks/01_eda.ipynb` -> Takeaways) into reproducible
 training code. Produces two trained models and registry-ready artifacts.
 
+**Navigate `src/train.py`:** [train-code-map.md](train-code-map.md) — section guide
+with line ranges (start at `main()`, then `train_one()`).
+
 ## Files
 
 | File | Purpose |
@@ -71,7 +74,7 @@ is standard practice for imbalanced classification ([scikit-learn](https://sciki
 ### Metrics reporting
 
 Each role has a different job; only **test** is the headline number for
-stakeholders or interviews ([MetricGate](https://metricgate.com/blogs/training-vs-validation-vs-test-set/),
+stakeholders ([MetricGate](https://metricgate.com/blogs/training-vs-validation-vs-test-set/),
 [Machine Learning Mastery — test vs validation](https://machinelearningmastery.com/difference-test-validation-datasets/)):
 
 | Phase | Role | Report externally? |
@@ -87,7 +90,7 @@ stakeholders or interviews ([MetricGate](https://metricgate.com/blogs/training-v
 - `full_feature_set.champion.development_only` — CV score + validation metrics.
 - Per-model entries use the same `report` / `development_only` nesting.
 
-**Interview framing:** “We tuned threshold on validation; test recall/precision/F1
+**Reporting guidance:** “We tuned threshold on validation; test recall/precision/F1
 are the numbers I’d stand behind.”
 
 ### Other evaluation settings
@@ -98,7 +101,7 @@ are the numbers I’d stand behind.”
   (`--threshold-strategy f1`).
 - **Imbalance:** loss reweighting only (no oversampling); default `--pos-weight sqrt`.
 - **Feature set:** default `baseline` (raw EDA features). Use
-  `--feature-set engineered` for interview/demo (+4 EDA-driven features).
+  `--feature-set engineered` for demo comparison (+4 EDA-driven features).
 - **Explainability:** Random Forest exports Gini importances + **SHAP** summary
   under `models/random_forest/shap/`.
 - **Baseline snapshot:** `make train-baseline` saves results under
@@ -118,7 +121,7 @@ Each run prints and saves a `run_config` block listing every knob used.
 # full run with baseline features (default)
 make train
 
-# interview demo: engineered features + baseline comparison
+# optional: engineered features + baseline comparison
 make train FEATURE_SET=engineered
 
 # freeze / refresh the raw-feature baseline snapshot

@@ -19,6 +19,10 @@ Run it:
     python -m src.train --no-tune       # skip tree-model grid searches
     python -m src.train --probe-feature # Feature-engine probe audit (analysis only)
     python -m src.train --probe-train   # compare full vs probe-selected features
+
+**Code map:** [docs/train-code-map.md](../docs/train-code-map.md) —
+section guide with line ranges; start at ``main()`` then ``train_one()``.
+Inline section comments below are a concise in-file version of that map.
 """
 
 from __future__ import annotations
@@ -91,6 +95,11 @@ SELECTION_METRIC = "average_precision"
 F2_SCORER = make_scorer(fbeta_score, beta=2)
 
 
+# --------------------------------------------------------------------------- #
+# Config and run metadata
+# Maps CLI metrics to sklearn scorers, snapshots run config for summary.json,
+# and splits data stratified 70/15/15 — test is never used for fit or threshold.
+# --------------------------------------------------------------------------- #
 def resolve_sklearn_scorer(metric: str) -> str | Callable[..., float]:
     """Map CLI metric names to sklearn ``scoring`` strings or scorers."""
     mapping: dict[str, str | Callable[..., float]] = {
@@ -300,7 +309,9 @@ def log_run_config(run_config: dict) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Metrics helpers
+# Metrics and fairness
+# Threshold is tuned on validation; test metrics in metrics.json are headline.
+# Fairness merges demographics on customerID after scoring — not model features.
 # --------------------------------------------------------------------------- #
 def best_threshold(
     y_true: np.ndarray,
@@ -420,6 +431,8 @@ def fairness_by_group(
 
 # --------------------------------------------------------------------------- #
 # Model builders
+# Four pipelines share the same features and split: LogReg sets the bar (untuned),
+# tree models get optional GridSearchCV. Probe helpers are analysis-only.
 # --------------------------------------------------------------------------- #
 PROBE_N_PROBES = 3
 # Binary probes match one-hot encoded columns; Gaussian probes inflate the threshold
@@ -780,7 +793,9 @@ LGBM_PARAM_GRID = {
 
 
 # --------------------------------------------------------------------------- #
-# Training routine for a single model
+# Core training loop (train_one)
+# Per model: optional grid search → CV score → threshold on val → test eval
+# and fairness audit. Written to models/<name>/metrics.json via save_artifacts.
 # --------------------------------------------------------------------------- #
 def train_one(
     name: str,
@@ -884,6 +899,11 @@ def train_one(
     return pipe, metrics
 
 
+# --------------------------------------------------------------------------- #
+# Explainability and probe audit
+# Optional paths: RF Gini importances, Feature-engine probe audit, SHAP plots.
+# Not required for the core train → compare → persist flow.
+# --------------------------------------------------------------------------- #
 def _grid_size(grid: dict) -> int:
     size = 1
     for values in grid.values():
@@ -1125,6 +1145,7 @@ def save_shap_analysis(
 
 # --------------------------------------------------------------------------- #
 # Persistence
+# Saves model.joblib + metrics.json per model; train_model_suite loops all four.
 # --------------------------------------------------------------------------- #
 def save_artifacts(name: str, pipe: Pipeline, metrics: dict, *, subdir: str = "") -> Path:
     """Write the fitted pipeline + metrics under models/<subdir><name>/."""
@@ -1196,7 +1217,9 @@ def train_model_suite(
 
 
 # --------------------------------------------------------------------------- #
-# Orchestration
+# Orchestration (main)
+# Load BQ → clean → split → train_model_suite (×2 if probe) → summary.json.
+# Entry point: start here, then drill into train_one() for per-model detail.
 # --------------------------------------------------------------------------- #
 def main(
     sample: int | None = None,
@@ -1427,6 +1450,10 @@ def main(
     return summary
 
 
+# --------------------------------------------------------------------------- #
+# CLI
+# Flags for smoke runs, tuning, probe audit, metrics, and imbalance handling.
+# --------------------------------------------------------------------------- #
 def _load_sample(n: int) -> pd.DataFrame:
     from . import data
 
