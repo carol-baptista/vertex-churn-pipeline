@@ -123,8 +123,12 @@ Registry runs inference; predictions append to BQ with `run_id`, `scored_at`.
 |---------|-----|
 | `make score-local` | Dev / fast validation |
 | `make score-vertex` | Production-like batch job |
+| `make warm-cache` | Post-batch cache export (hybrid pattern) |
+| `make cache-lookup CUSTOMER_ID=…` | Simulated app read from cache |
 
 **Cadence:** monthly (`0 6 1 * *`) — month-to-month contracts; features move on billing cycles.
+
+**In-app reads:** batch + cache hybrid — [inference-patterns.md](inference-patterns.md). BQ stays source of truth; cache serves hot lookups without a 24/7 endpoint.
 
 ---
 
@@ -132,7 +136,9 @@ Registry runs inference; predictions append to BQ with `run_id`, `scored_at`.
 
 ```bash
 make fairness MODEL=random_forest
-make predict CUSTOMER_ID=7590-VHVEG
+make predict CUSTOMER_ID=7590-VHVEG          # debug: re-runs model
+make score-local && make warm-cache
+make cache-lookup CUSTOMER_ID=7590-VHVEG       # hybrid: read from cache
 ```
 
 Screenshots alternative: Model Registry (**us-west1**), BQ `predictions`, one batch job.
@@ -156,7 +162,8 @@ Screenshots alternative: Model Registry (**us-west1**), BQ `predictions`, one ba
 | Question | Short answer |
 |----------|--------------|
 | Why local train? | Faster iteration, lower cost; cloud proof is Registry + batch |
-| Why batch not endpoint? | Monthly retention campaigns; batch is cheaper |
+| In-app churn risk? | Batch monthly + cache read; not a 24/7 endpoint |
+| Why batch not endpoint? | Monthly cadence; batch + cache for in-app reads |
 | Why RF over XGBoost? | Better **test** F1/PR-AUC |
 | Train/serve skew? | Same `preprocess.clean` + 18 baseline cols |
 | Why threshold outside pipeline? | Change policy without retrain |

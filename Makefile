@@ -40,7 +40,7 @@ ifeq ($(REGISTER_ONLY),1)
 DEPLOY_EXTRA += --register-only
 endif
 
-.PHONY: help sync test train train-baseline train-smoke train-fast train-probe train-probe-compare fairness predict package package-test deploy undeploy seed-scoring score-local score-vertex
+.PHONY: help sync test train train-baseline train-smoke train-fast train-probe train-probe-compare fairness predict package package-test deploy undeploy seed-scoring score-local score-vertex warm-cache cache-lookup
 
 help:
 	@echo "Targets:"
@@ -68,6 +68,8 @@ help:
 	@echo "  make seed-scoring      Sample customers_scoring (LIMIT=$(LIMIT), no Churn label)"
 	@echo "  make score-local       Score with local model -> churn_ml.predictions"
 	@echo "  make score-vertex      Score via Vertex BatchPredictionJob -> predictions"
+	@echo "  make warm-cache        Export latest scores -> data/cache/ (hybrid read path)"
+	@echo "  make cache-lookup CUSTOMER_ID=7590-VHVEG  Read one customer from cache"
 	@echo ""
 	@echo "Training options (feature_set=$(FEATURE_SET), metric=$(METRIC), pos=$(POS_WEIGHT)):"
 	@echo "  make train FEATURE_SET=engineered  Demo engineered features vs baseline"
@@ -134,3 +136,9 @@ score-local:
 
 score-vertex:
 	uv run python -m src.batch score-vertex
+
+warm-cache:
+	uv run python -m src.cache_warm warm
+
+cache-lookup:
+	uv run python -m src.cache_warm lookup --customer-id $(CUSTOMER_ID)

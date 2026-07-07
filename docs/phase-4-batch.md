@@ -87,3 +87,22 @@ make score-vertex
 In production you would trigger `score-vertex` (or a Cloud Run wrapper) on a cron, e.g. Cloud Scheduler on the **1st of each month at 6am**. Phase 4 stops at the Makefile commands; Scheduler wiring is a small follow-up once batch scoring is verified.
 
 **Cadence rationale:** contracts here are at least month-to-month (many longer). Feature values (`tenure`, `MonthlyCharges`, `TotalCharges`, contract type) change on billing cycles, not weekly — so monthly scoring is enough and avoids redundant batch jobs.
+
+## Batch + cache hybrid (recommended for product reads)
+
+Batch → BQ is the source of truth. For apps or agent tools that need **many low-latency lookups**, warm a cache after each batch run instead of keeping a Vertex endpoint up 24/7.
+
+| Step | Repo | Production |
+|------|------|------------|
+| Score | `make score-vertex` | Cloud Scheduler → batch job |
+| Materialize latest | [sql/03_predictions_latest.sql](../sql/03_predictions_latest.sql) | BQ view |
+| Warm cache | `make warm-cache` | Cloud Run Job → Redis / Memorystore |
+| App read | `make cache-lookup CUSTOMER_ID=…` | API `GET /risk/{id}` from cache |
+
+```bash
+make score-local
+make warm-cache
+make cache-lookup CUSTOMER_ID=7590-VHVEG
+```
+
+Full write-up: [inference-patterns.md](inference-patterns.md)

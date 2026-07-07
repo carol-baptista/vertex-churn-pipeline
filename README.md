@@ -203,6 +203,20 @@ LIMIT 20;
 
 Details: [docs/phase-4-batch.md](docs/phase-4-batch.md)
 
+#### Batch + cache hybrid (how I would serve in-app reads)
+
+Monthly batch writes scores to BigQuery. A **post-batch warm job** exports the latest row per customer to a read cache (Redis/Memorystore in production; local JSONL in this repo). Product APIs read the cache — no Vertex call on the hot path.
+
+```bash
+make score-local                              # 1. batch → predictions (BQ)
+make warm-cache                               # 2. post-batch → data/cache/churn_scores.jsonl
+make cache-lookup CUSTOMER_ID=7590-VHVEG      # 3. app-style read (milliseconds, no model)
+```
+
+Contrast `make predict CUSTOMER_ID=…`, which re-runs the model for debugging only.
+
+Full comparison (batch vs endpoint vs hybrid): [docs/inference-patterns.md](docs/inference-patterns.md) · SQL view: [sql/03_predictions_latest.sql](sql/03_predictions_latest.sql)
+
 ### Model registration (between train and Vertex scoring)
 
 ```mermaid
@@ -226,7 +240,7 @@ GCS CSV → BigQuery customers
        → batch score → BigQuery predictions  ← analytics / production consumers
 ```
 
-Optional: `make deploy` (without `REGISTER_ONLY`) attaches the model to an **online endpoint** for real-time demos; monthly batch scoring does not require a running endpoint.
+Optional: `make deploy` (without `REGISTER_ONLY`) attaches the model to an **online endpoint** for real-time demos; monthly batch scoring does not require a running endpoint. For in-app reads at scale, see [inference patterns](docs/inference-patterns.md) (batch + cache hybrid).
 
 ## Cost note
 
@@ -286,7 +300,7 @@ End-to-end flow: **load data → train → register model → batch score to BQ*
 | **1** | Done | Telco CSV in BigQuery (`churn_ml.customers`) | [phase-1-data.md](docs/phase-1-data.md) · `./scripts/load_to_bq.sh` |
 | **2** | Done | Trained models, threshold tuning, fairness slices, local artifacts | [phase-2-modeling.md](docs/phase-2-modeling.md) · `make train` · `make fairness` |
 | **3** | Done | RF champion packaged; CPR image + **Model Registry** (`churn-predictor`, us-west1) | [phase-3-deploy.md](docs/phase-3-deploy.md) · `make package` · `make deploy REGISTER_ONLY=1` |
-| **4** | Done | Batch scoring → **`churn_ml.predictions`** (local + Vertex batch paths) | [phase-4-batch.md](docs/phase-4-batch.md) · `make seed-scoring` · `make score-local` · `make score-vertex` |
+| **4** | Done | Batch scoring → **`churn_ml.predictions`** (local + Vertex batch paths) | [phase-4-batch.md](docs/phase-4-batch.md) · [inference-patterns.md](docs/inference-patterns.md) · `make score-*` · `make warm-cache` |
 | **5** | Planned | **Monthly** Cloud Scheduler + monitoring / second model version | Automate `score-vertex` (cron `0 6 1 * *`); prediction drift dashboards |
 
 ### Phase 4 note (demo vs production)
@@ -366,7 +380,10 @@ Use this section to navigate the repo by topic. Each step links to the folders a
 | Open | Why |
 |------|-----|
 | [src/batch.py](src/batch.py) | `seed`, `score-local`, `score-vertex`, write to BQ |
+| [src/cache_warm.py](src/cache_warm.py) | Post-batch cache export + lookup (hybrid demo) |
 | [sql/02_predictions.sql](sql/02_predictions.sql) | Sample queries on `predictions` |
+| [sql/03_predictions_latest.sql](sql/03_predictions_latest.sql) | Latest score per customer (cache source) |
+| [docs/inference-patterns.md](docs/inference-patterns.md) | Batch vs endpoint vs batch+cache |
 | [docs/phase-4-batch.md](docs/phase-4-batch.md) | Demo vs production, monthly cadence |
 
 | Command | Role |
@@ -374,6 +391,8 @@ Use this section to navigate the repo by topic. Each step links to the folders a
 | `make seed-scoring` | Demo only — builds `customers_scoring` (no label) |
 | `make score-local` | Fast path — local `model.joblib` → BQ |
 | `make score-vertex` | Production-like — Vertex BatchPredictionJob → BQ |
+| `make warm-cache` | Post-batch — export latest scores to read cache |
+| `make cache-lookup CUSTOMER_ID=…` | App-style read from cache (no model call) |
 
 ### 5. Tests and quality
 
@@ -430,6 +449,7 @@ The pipeline code lives in a flat `src/` package (~9 modules). That matches the 
 | `package.py` | Build `serving/churn-rf/v1/` CPR bundle |
 | `deploy.py` | Upload bundle to GCS, register in Vertex, deploy endpoint |
 | `batch.py` | Seed `customers_scoring`, score to `predictions` (local or Vertex batch) |
+| `cache_warm.py` | Export `predictions_latest` to read cache (hybrid pattern showcase) |
 
 Boundaries that matter more than folder depth:
 
