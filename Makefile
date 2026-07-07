@@ -40,7 +40,7 @@ ifeq ($(REGISTER_ONLY),1)
 DEPLOY_EXTRA += --register-only
 endif
 
-.PHONY: help sync test train train-baseline train-smoke train-fast train-probe train-probe-compare fairness predict package package-test deploy undeploy seed-scoring score-local score-vertex warm-cache cache-lookup
+.PHONY: help sync test train train-baseline train-smoke train-fast train-probe train-probe-compare fairness pr-curve predict package package-test deploy undeploy seed-scoring score-local score-vertex warm-cache cache-lookup
 
 help:
 	@echo "Targets:"
@@ -53,6 +53,7 @@ help:
 	@echo "  make train-baseline    Optional: freeze baseline snapshot for comparisons"
 	@echo "  make train             Full train (default: baseline features)"
 	@echo "  make fairness          Print test fairness slices (MODEL=$(MODEL))"
+	@echo "  make pr-curve          Plot precision-recall curve on test set (MODEL=$(MODEL))"
 	@echo "  make predict           Score one BigQuery row with saved artifact"
 	@echo "  make predict CUSTOMER_ID=7590-VHVEG"
 	@echo ""
@@ -108,6 +109,9 @@ train-probe-compare: sync
 
 fairness:
 	uv run python -m src.inspect --model $(MODEL)
+
+pr-curve:
+	uv run python -m src.inspect --pr-curve --model $(MODEL)
 
 predict:
 ifeq ($(strip $(CUSTOMER_ID)),)
