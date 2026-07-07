@@ -1,0 +1,35 @@
+{
+  "threshold": 0.31401610374450684,
+  "pr_auc": 0.5310748424335886,
+  "roc_auc": 0.6810549525101766,
+  "precision": 0.425,
+  "recall": 0.7727272727272727,
+  "f1": 0.5483870967741935,
+  "confusion_matrix": [
+    [
+      130,
+      138
+    ],
+    [
+      30,
+      102
+    ]
+  ],
+  "cv_pr_auc": 0.5379171410371666,
+  "fairness_by_gender": {
+    "Female": {
+      "n": 189,
+      "actual_churn_rate": 0.31746031746031744,
+      "predicted_positive_rate": 0.5608465608465608,
+      "recall": 0.75,
+      "precision": 0.42452830188679247
+    },
+    "Male": {
+      "n": 211,
+      "actual_churn_rate": 0.3412322274881517,
+      "predicted_positive_rate": 0.6350710900473934,
+      "recall": 0.7916666666666666,
+      "precision": 0.4253731343283582
+    }
+  }
+}

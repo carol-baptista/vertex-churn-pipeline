@@ -1,0 +1,14 @@
+[
+  {
+    "feature": "num__TotalCharges",
+    "importance": 0.4214294088975721
+  },
+  {
+    "feature": "num__MonthlyCharges",
+    "importance": 0.3951161420262027
+  },
+  {
+    "feature": "num__tenure",
+    "importance": 0.18345444907622516
+  }
+]

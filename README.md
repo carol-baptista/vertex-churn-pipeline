@@ -422,7 +422,7 @@ vertex-churn-pipeline/
 ├── configs/           # non-secret config
 ├── docs/              # setup, phase guides, project-walkthrough.md
 ├── experiments/       # baseline vs engineered comparisons
-├── models/            # trained artifacts (local, gitignored)
+├── models/            # metrics + plots in git; model.joblib local only
 ├── notebooks/         # EDA (01_eda.ipynb)
 ├── scripts/           # setup_gcp.sh, load_to_bq.sh
 ├── serving/           # CPR bundle (churn-rf/v1/, CHANGELOG.md)

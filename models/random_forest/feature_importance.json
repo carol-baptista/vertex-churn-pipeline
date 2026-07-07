@@ -1,0 +1,146 @@
+[
+  {
+    "feature": "num__tenure",
+    "importance": 0.14871391621094254
+  },
+  {
+    "feature": "cat__Contract_Month-to-month",
+    "importance": 0.14264897862150128
+  },
+  {
+    "feature": "num__TotalCharges",
+    "importance": 0.09951331425192025
+  },
+  {
+    "feature": "num__MonthlyCharges",
+    "importance": 0.07216404045946896
+  },
+  {
+    "feature": "cat__OnlineSecurity_No",
+    "importance": 0.0720923913398114
+  },
+  {
+    "feature": "cat__TechSupport_No",
+    "importance": 0.06362966495229558
+  },
+  {
+    "feature": "cat__InternetService_Fiber optic",
+    "importance": 0.06012060198493168
+  },
+  {
+    "feature": "cat__Contract_Two year",
+    "importance": 0.04810926985602153
+  },
+  {
+    "feature": "cat__PaymentMethod_Electronic check",
+    "importance": 0.04031690631742339
+  },
+  {
+    "feature": "cat__InternetService_No",
+    "importance": 0.021450840677269538
+  },
+  {
+    "feature": "cat__OnlineBackup_No",
+    "importance": 0.021297244129968536
+  },
+  {
+    "feature": "cat__DeviceProtection_No",
+    "importance": 0.020641709241308412
+  },
+  {
+    "feature": "cat__InternetService_DSL",
+    "importance": 0.01990789951868906
+  },
+  {
+    "feature": "cat__Contract_One year",
+    "importance": 0.018595538648860353
+  },
+  {
+    "feature": "cat__OnlineSecurity_Yes",
+    "importance": 0.014287073114810107
+  },
+  {
+    "feature": "cat__PaperlessBilling_False",
+    "importance": 0.013335410880049078
+  },
+  {
+    "feature": "cat__PaperlessBilling_True",
+    "importance": 0.012650046928218178
+  },
+  {
+    "feature": "cat__TechSupport_Yes",
+    "importance": 0.010634410390945412
+  },
+  {
+    "feature": "num__SeniorCitizen",
+    "importance": 0.007781241761853313
+  },
+  {
+    "feature": "cat__StreamingMovies_Yes",
+    "importance": 0.007246386834810919
+  },
+  {
+    "feature": "cat__MultipleLines_No",
+    "importance": 0.007143007509087392
+  },
+  {
+    "feature": "cat__OnlineBackup_Yes",
+    "importance": 0.007053319247919262
+  },
+  {
+    "feature": "cat__MultipleLines_Yes",
+    "importance": 0.0068097644968592805
+  },
+  {
+    "feature": "cat__StreamingTV_No",
+    "importance": 0.006066486860322253
+  },
+  {
+    "feature": "cat__StreamingTV_Yes",
+    "importance": 0.005983325107411017
+  },
+  {
+    "feature": "cat__Partner_False",
+    "importance": 0.005874865750749326
+  },
+  {
+    "feature": "cat__StreamingMovies_No",
+    "importance": 0.005745205909140347
+  },
+  {
+    "feature": "cat__Partner_True",
+    "importance": 0.0056396767489126556
+  },
+  {
+    "feature": "cat__Dependents_True",
+    "importance": 0.005511438090899608
+  },
+  {
+    "feature": "cat__DeviceProtection_Yes",
+    "importance": 0.0051855019733657946
+  },
+  {
+    "feature": "cat__PaymentMethod_Credit card (automatic)",
+    "importance": 0.005147541218492395
+  },
+  {
+    "feature": "cat__Dependents_False",
+    "importance": 0.004848217042856866
+  },
+  {
+    "feature": "cat__PaymentMethod_Mailed check",
+    "importance": 0.004102183000627396
+  },
+  {
+    "feature": "cat__PaymentMethod_Bank transfer (automatic)",
+    "importance": 0.004034299918272188
+  },
+  {
+    "feature": "cat__PhoneService_False",
+    "importance": 0.002860182910549636
+  },
+  {
+    "feature": "cat__PhoneService_True",
+    "importance": 0.0028580980934351415
+  }
+]

@@ -1,0 +1,49 @@
+{
+  "threshold": 0.14666666666666667,
+  "pr_auc": 0.5010640429715776,
+  "roc_auc": 0.6293815015829942,
+  "precision": 0.3735408560311284,
+  "recall": 0.7272727272727273,
+  "f1": 0.493573264781491,
+  "confusion_matrix": [
+    [
+      107,
+      161
+    ],
+    [
+      36,
+      96
+    ]
+  ],
+  "cv_pr_auc": 0.5292688894201671,
+  "fairness_by_gender": {
+    "Female": {
+      "n": 189,
+      "actual_churn_rate": 0.31746031746031744,
+      "predicted_positive_rate": 0.6243386243386243,
+      "recall": 0.7166666666666667,
+      "precision": 0.3644067796610169
+    },
+    "Male": {
+      "n": 211,
+      "actual_churn_rate": 0.3412322274881517,
+      "predicted_positive_rate": 0.6587677725118484,
+      "recall": 0.7361111111111112,
+      "precision": 0.381294964028777
+    }
+  },
+  "feature_importance_top20": [
+    {
+      "feature": "num__TotalCharges",
+      "importance": 0.4214294088975721
+    },
+    {
+      "feature": "num__MonthlyCharges",
+      "importance": 0.3951161420262027
+    },
+    {
+      "feature": "num__tenure",
+      "importance": 0.18345444907622516
+    }
+  ]
+}

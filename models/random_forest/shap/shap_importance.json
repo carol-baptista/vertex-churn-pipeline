@@ -1,0 +1,146 @@
+[
+  {
+    "feature": "cat__Contract_Month-to-month",
+    "mean_abs_shap": 0.059448327718096584
+  },
+  {
+    "feature": "num__tenure",
+    "mean_abs_shap": 0.05673455721426067
+  },
+  {
+    "feature": "cat__InternetService_Fiber optic",
+    "mean_abs_shap": 0.04073633761378458
+  },
+  {
+    "feature": "num__TotalCharges",
+    "mean_abs_shap": 0.027626959986170454
+  },
+  {
+    "feature": "cat__OnlineSecurity_No",
+    "mean_abs_shap": 0.026959200669316962
+  },
+  {
+    "feature": "cat__Contract_Two year",
+    "mean_abs_shap": 0.02661923244326129
+  },
+  {
+    "feature": "num__MonthlyCharges",
+    "mean_abs_shap": 0.02306511324842056
+  },
+  {
+    "feature": "cat__TechSupport_No",
+    "mean_abs_shap": 0.021524533977549467
+  },
+  {
+    "feature": "cat__PaymentMethod_Electronic check",
+    "mean_abs_shap": 0.016852689835494317
+  },
+  {
+    "feature": "cat__InternetService_DSL",
+    "mean_abs_shap": 0.013236221703615264
+  },
+  {
+    "feature": "cat__InternetService_No",
+    "mean_abs_shap": 0.011533235466032299
+  },
+  {
+    "feature": "cat__OnlineBackup_No",
+    "mean_abs_shap": 0.010477655641497306
+  },
+  {
+    "feature": "cat__PaperlessBilling_False",
+    "mean_abs_shap": 0.009759375619149004
+  },
+  {
+    "feature": "cat__PaperlessBilling_True",
+    "mean_abs_shap": 0.008872488836776913
+  },
+  {
+    "feature": "cat__DeviceProtection_No",
+    "mean_abs_shap": 0.00799258100453892
+  },
+  {
+    "feature": "cat__OnlineSecurity_Yes",
+    "mean_abs_shap": 0.007036191231324376
+  },
+  {
+    "feature": "cat__StreamingMovies_Yes",
+    "mean_abs_shap": 0.006050248796779053
+  },
+  {
+    "feature": "cat__Contract_One year",
+    "mean_abs_shap": 0.005622245550670411
+  },
+  {
+    "feature": "cat__StreamingTV_Yes",
+    "mean_abs_shap": 0.005111250375891099
+  },
+  {
+    "feature": "num__SeniorCitizen",
+    "mean_abs_shap": 0.004401186949883378
+  },
+  {
+    "feature": "cat__MultipleLines_Yes",
+    "mean_abs_shap": 0.003966653579974744
+  },
+  {
+    "feature": "cat__MultipleLines_No",
+    "mean_abs_shap": 0.0038325270424661357
+  },
+  {
+    "feature": "cat__OnlineBackup_Yes",
+    "mean_abs_shap": 0.0034677708148247704
+  },
+  {
+    "feature": "cat__TechSupport_Yes",
+    "mean_abs_shap": 0.003257876332762652
+  },
+  {
+    "feature": "cat__StreamingMovies_No",
+    "mean_abs_shap": 0.0030664047951592215
+  },
+  {
+    "feature": "cat__StreamingTV_No",
+    "mean_abs_shap": 0.0026035480323267895
+  },
+  {
+    "feature": "cat__Dependents_True",
+    "mean_abs_shap": 0.0021290170258031417
+  },
+  {
+    "feature": "cat__PaymentMethod_Mailed check",
+    "mean_abs_shap": 0.0021050574664521556
+  },
+  {
+    "feature": "cat__Partner_False",
+    "mean_abs_shap": 0.0020121510858293235
+  },
+  {
+    "feature": "cat__Partner_True",
+    "mean_abs_shap": 0.0020024200836222515
+  },
+  {
+    "feature": "cat__PaymentMethod_Credit card (automatic)",
+    "mean_abs_shap": 0.0019084829556388278
+  },
+  {
+    "feature": "cat__Dependents_False",
+    "mean_abs_shap": 0.0018528095918445323
+  },
+  {
+    "feature": "cat__DeviceProtection_Yes",
+    "mean_abs_shap": 0.0013924997258698566
+  },
+  {
+    "feature": "cat__PaymentMethod_Bank transfer (automatic)",
+    "mean_abs_shap": 0.0006899063696279115
+  },
+  {
+    "feature": "cat__PhoneService_False",
+    "mean_abs_shap": 0.0005846360211244475
+  },
+  {
+    "feature": "cat__PhoneService_True",
+    "mean_abs_shap": 0.0005023336738443677
+  }
+]

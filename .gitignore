@@ -12,21 +12,26 @@ venv/
 # Jupyter
 .ipynb_checkpoints/
 
-# Data & artifacts (keep local, not in git)
+# Data & artifacts
 data/
 *.csv
 *.parquet
-models/
+*.pkl
+*.joblib
+
+# Model weights stay local; metrics JSON + eval plots under models/ are tracked
+models/**/model.joblib
+
 serving/churn-rf/v1/model.joblib
 serving/churn-rf/v1/threshold.json
 serving/churn-rf/v1/feature_schema.json
 serving/churn-rf/v1/manifest.json
-*.pkl
-*.joblib
 
 # GCP credentials
 *.json
 !configs/.gitkeep
+!models/**/*.json
+!experiments/**/*.json
 service-account*.json
 application_default_credentials.json
 

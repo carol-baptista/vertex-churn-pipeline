@@ -1,0 +1,10 @@
+{
+  "model": "random_forest",
+  "split": "test",
+  "pr_auc": 0.6834287436675271,
+  "prevalence": 0.26490066225165565,
+  "lift_over_random": 2.5799435073449146,
+  "threshold": 0.4410815861857707,
+  "operating_precision": 0.5497237569060773,
+  "operating_recall": 0.7107142857142857
+}
